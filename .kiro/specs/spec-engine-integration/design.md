@@ -1,8 +1,8 @@
-# Design Document - IDE Orchestrator Spec Engine Integration
+# Design Document - IDE Orchestrator deepagents-runtime Integration
 
 ## Overview
 
-This document specifies the detailed design for integrating IDE Orchestrator with the Spec Engine service to enable AI-powered workflow specification generation. The integration follows a secure proxy pattern where IDE Orchestrator acts as an authenticated gateway between the frontend and the internal Spec Engine service.
+This document specifies the detailed design for integrating IDE Orchestrator with the deepagents-runtime service to enable AI-powered workflow specification generation. The integration follows a secure proxy pattern where IDE Orchestrator acts as an authenticated gateway between the frontend and the internal deepagents-runtime service.
 
 The design implements a hybrid event processing approach that combines real-time WebSocket streaming with reliable final state extraction, ensuring both excellent user experience and data consistency.
 
@@ -18,7 +18,7 @@ graph TD
     
     subgraph "Zerotouch Platform Cluster"
         B[IDE Orchestrator]
-        C[Spec Engine Service]
+        C[deepagents-runtime Service]
         D[PostgreSQL Instance]
         E[Dragonfly Cache]
     end
@@ -43,22 +43,22 @@ graph TD
 #### IDE Orchestrator (Enhanced)
 - **Responsibility**: Secure proxy and state manager for specification workflows
 - **Technology Stack**: Go + Gin + pgx + Gorilla WebSocket + OpenTelemetry
-- **New Features**: WebSocket proxy, Spec Engine client, hybrid event processing
+- **New Features**: WebSocket proxy, deepagents-runtime client, hybrid event processing
 - **Database**: `ide_orchestrator` database with proposals, drafts, workflows tables
 
-#### Spec Engine Service (deepagents-runtime)
+#### deepagents-runtime Service
 - **Responsibility**: AI-powered specification generation using deepagents framework
 - **Technology Stack**: Python + FastAPI + LangGraph + deepagents + WebSocket
-- **New Endpoints**: `/spec-engine/invoke`, `/spec-engine/stream/{thread_id}`, `/spec-engine/state/{thread_id}`
+- **New Endpoints**: `/deepagents-runtime/invoke`, `/deepagents-runtime/stream/{thread_id}`, `/deepagents-runtime/state/{thread_id}`
 - **Database**: `deepagents_runtime` database with checkpoints tables
 
 ## Components and Interfaces
 
-### Spec Engine Service Endpoints
+### deepagents-runtime Service Endpoints
 
 #### REST API Endpoints
 
-**POST /spec-engine/invoke**
+**POST /deepagents-runtime/invoke**
 ```json
 {
   "trace_id": "uuid",
@@ -76,7 +76,7 @@ Response:
 }
 ```
 
-**GET /spec-engine/state/{thread_id}**
+**GET /deepagents-runtime/state/{thread_id}**
 ```json
 Response:
 {
@@ -89,7 +89,7 @@ Response:
 
 #### WebSocket Streaming Endpoint
 
-**GET /spec-engine/stream/{thread_id}**
+**GET /deepagents-runtime/stream/{thread_id}**
 
 Event Format:
 ```json
@@ -110,10 +110,10 @@ Event Format:
 
 ### IDE Orchestrator Integration
 
-#### Spec Engine Client
+#### deepagents-runtime Client
 
 ```go
-type SpecEngineClient struct {
+type DeepAgentsRuntimeClient struct {
     baseURL    string
     httpClient *http.Client
     tracer     trace.Tracer
@@ -135,18 +135,18 @@ type Message struct {
     Content string `json:"content"`
 }
 
-func (c *SpecEngineClient) Invoke(ctx context.Context, req JobRequest) (string, error) {
-    // POST /spec-engine/invoke
+func (c *DeepAgentsRuntimeClient) Invoke(ctx context.Context, req JobRequest) (string, error) {
+    // POST /deepagents-runtime/invoke
     // Returns thread_id
 }
 
-func (c *SpecEngineClient) StreamWebSocket(ctx context.Context, threadID string) (*websocket.Conn, error) {
-    // WS /spec-engine/stream/{thread_id}
+func (c *DeepAgentsRuntimeClient) StreamWebSocket(ctx context.Context, threadID string) (*websocket.Conn, error) {
+    // WS /deepagents-runtime/stream/{thread_id}
     // Returns WebSocket connection
 }
 
-func (c *SpecEngineClient) GetState(ctx context.Context, threadID string) (*ExecutionState, error) {
-    // GET /spec-engine/state/{thread_id}
+func (c *DeepAgentsRuntimeClient) GetState(ctx context.Context, threadID string) (*ExecutionState, error) {
+    // GET /deepagents-runtime/state/{thread_id}
     // Returns final state (fallback if needed)
 }
 ```
@@ -183,18 +183,18 @@ func (h *Handler) StreamRefinement(c *gin.Context) {
     }
     defer clientConn.Close()
     
-    // Connect to Spec Engine WebSocket
-    specEngineConn, err := h.specEngineClient.StreamWebSocket(c.Request.Context(), threadID)
+    // Connect to deepagents-runtime WebSocket
+    deepAgentsConn, err := h.deepAgentsClient.StreamWebSocket(c.Request.Context(), threadID)
     if err != nil {
         clientConn.WriteJSON(map[string]interface{}{
-            "error": "Failed to connect to Spec Engine",
+            "error": "Failed to connect to deepagents-runtime",
         })
         return
     }
-    defer specEngineConn.Close()
+    defer deepAgentsConn.Close()
     
     // Start hybrid event processing
-    h.proxyWebSocketWithStateExtraction(clientConn, specEngineConn, threadID)
+    h.proxyWebSocketWithStateExtraction(clientConn, deepAgentsConn, threadID)
 }
 ```
 
@@ -202,14 +202,14 @@ func (h *Handler) StreamRefinement(c *gin.Context) {
 
 ```go
 func (h *Handler) proxyWebSocketWithStateExtraction(
-    clientConn, specEngineConn *websocket.Conn, 
+    clientConn, deepAgentsConn *websocket.Conn, 
     threadID string,
 ) {
     var finalFiles map[string]interface{}
     
     for {
         var event StreamEvent
-        if err := specEngineConn.ReadJSON(&event); err != nil {
+        if err := deepAgentsConn.ReadJSON(&event); err != nil {
             break
         }
         
@@ -272,7 +272,7 @@ CREATE TABLE proposals (
     context_file_path TEXT,
     context_selection TEXT,
     
-    -- Generated output from Spec Engine
+    -- Generated output from deepagents-runtime
     generated_files JSONB, -- Complete files object from final on_state_update
     
     -- Metadata
@@ -512,13 +512,13 @@ func (h *Handler) handleWebSocketError(clientConn *websocket.Conn, err error, co
 ### Circuit Breaker Pattern
 
 ```go
-type SpecEngineCircuitBreaker struct {
+type DeepAgentsRuntimeCircuitBreaker struct {
     breaker *gobreaker.CircuitBreaker
 }
 
-func NewSpecEngineCircuitBreaker() *SpecEngineCircuitBreaker {
+func NewDeepAgentsRuntimeCircuitBreaker() *DeepAgentsRuntimeCircuitBreaker {
     settings := gobreaker.Settings{
-        Name:        "spec-engine",
+        Name:        "deepagents-runtime",
         MaxRequests: 3,
         Interval:    60 * time.Second,
         Timeout:     30 * time.Second,
@@ -527,14 +527,14 @@ func NewSpecEngineCircuitBreaker() *SpecEngineCircuitBreaker {
         },
     }
     
-    return &SpecEngineCircuitBreaker{
+    return &DeepAgentsRuntimeCircuitBreaker{
         breaker: gobreaker.NewCircuitBreaker(settings),
     }
 }
 
-func (cb *SpecEngineCircuitBreaker) Invoke(ctx context.Context, req JobRequest) (string, error) {
+func (cb *DeepAgentsRuntimeCircuitBreaker) Invoke(ctx context.Context, req JobRequest) (string, error) {
     result, err := cb.breaker.Execute(func() (interface{}, error) {
-        return cb.specEngineClient.Invoke(ctx, req)
+        return cb.deepAgentsClient.Invoke(ctx, req)
     })
     
     if err != nil {
@@ -550,11 +550,11 @@ func (cb *SpecEngineCircuitBreaker) Invoke(ctx context.Context, req JobRequest) 
 ### Integration Testing
 
 ```go
-func TestSpecEngineIntegration(t *testing.T) {
+func TestDeepAgentsRuntimeIntegration(t *testing.T) {
     // Setup test environment
     testDB := setupTestDatabase(t)
-    mockSpecEngine := setupMockSpecEngine(t)
-    orchestrator := setupOrchestrator(t, testDB, mockSpecEngine)
+    mockDeepAgents := setupMockDeepAgentsRuntime(t)
+    orchestrator := setupOrchestrator(t, testDB, mockDeepAgents)
     
     // Test refinement workflow
     t.Run("complete_refinement_workflow", func(t *testing.T) {
@@ -639,8 +639,8 @@ func (h *Handler) setupCORS() gin.HandlerFunc {
 ### OpenTelemetry Tracing
 
 ```go
-func (c *SpecEngineClient) Invoke(ctx context.Context, req JobRequest) (string, error) {
-    ctx, span := c.tracer.Start(ctx, "spec_engine.invoke")
+func (c *DeepAgentsRuntimeClient) Invoke(ctx context.Context, req JobRequest) (string, error) {
+    ctx, span := c.tracer.Start(ctx, "deepagents_runtime.invoke")
     defer span.End()
     
     span.SetAttributes(
@@ -649,7 +649,7 @@ func (c *SpecEngineClient) Invoke(ctx context.Context, req JobRequest) (string, 
     )
     
     // Make HTTP request with trace context
-    httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/spec-engine/invoke", body)
+    httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/deepagents-runtime/invoke", body)
     if err != nil {
         span.RecordError(err)
         return "", err
@@ -691,10 +691,10 @@ var (
         []string{"thread_id"},
     )
     
-    specEngineRequests = prometheus.NewCounterVec(
+    deepAgentsRequests = prometheus.NewCounterVec(
         prometheus.CounterOpts{
-            Name: "ide_orchestrator_spec_engine_requests_total",
-            Help: "Total requests to Spec Engine",
+            Name: "ide_orchestrator_deepagents_runtime_requests_total",
+            Help: "Total requests to deepagents-runtime",
         },
         []string{"endpoint", "status"},
     )
@@ -723,8 +723,8 @@ spec:
         ports:
         - containerPort: 8080
         env:
-        - name: SPEC_ENGINE_URL
-          value: "http://spec-engine-service:8000"
+        - name: DEEPAGENTS_RUNTIME_URL
+          value: "http://deepagents-runtime-service:8000"
         envFrom:
         - secretRef:
             name: ide-orchestrator-db-conn
@@ -765,4 +765,4 @@ spec:
       port: 8080
 ```
 
-This design provides a robust, secure, and scalable integration between IDE Orchestrator and Spec Engine while maintaining the architectural principles of the zerotouch-platform.
+This design provides a robust, secure, and scalable integration between IDE Orchestrator and deepagents-runtime while maintaining the architectural principles of the zerotouch-platform.
