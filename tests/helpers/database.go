@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // GetTestDatabasePool creates a database connection pool for testing
@@ -206,6 +207,15 @@ func (db *TestDatabase) GetUserCount(t *testing.T) int {
 		t.Fatalf("Failed to get user count: %v", err)
 	}
 	return count
+}
+
+// HashPassword hashes a password using bcrypt for testing
+func (db *TestDatabase) HashPassword(password string) (string, error) {
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+	return string(hashedBytes), nil
 }
 
 // WaitForDatabase waits for database to be ready

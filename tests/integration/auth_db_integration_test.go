@@ -22,16 +22,13 @@ import (
 
 // TestAuthDatabaseIntegration tests critical auth validations that require database access
 func TestAuthDatabaseIntegration(t *testing.T) {
-	// Set required environment variable for JWT manager
-	t.Setenv("JWT_SECRET", "test-secret-key-for-auth-db-integration-tests")
-
 	// Setup test environment with real infrastructure
 	testDB := helpers.NewTestDatabase(t)
 	defer testDB.Close()
 
-	// Use transaction-based isolation
-	txCtx, rollback := testDB.BeginTransaction(t)
-	defer rollback()
+	// Use real deepagents-runtime service (no mocking)
+	config := SetupInClusterEnvironment()
+	t.Logf("Using real infrastructure - Database: %s, SpecEngine: %s", config.DatabaseURL, config.SpecEngineURL)
 
 	// Initialize services
 	specEngineClient := orchestration.NewSpecEngineClient(testDB.Pool)
@@ -52,12 +49,13 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	protected := api.Group("")
 	protected.Use(auth.RequireAuth(jwtManager))
 	protected.POST("/workflows", gatewayHandler.CreateWorkflow)
+	protected.GET("/workflows/:id", gatewayHandler.GetWorkflow)
 	protected.GET("/protected", func(c *gin.Context) {
 		userID, _ := c.Get("user_id")
 		username, _ := c.Get("username")
 		c.JSON(http.StatusOK, gin.H{
 			"user_id": userID,
-			"email":   username, // The middleware sets username, but we call it email in response for consistency
+			"email":   username,
 			"message": "Access granted",
 		})
 	})
@@ -65,7 +63,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("Protected Endpoint Access with Database User", func(t *testing.T) {
 		// Create real user in database
 		userEmail := fmt.Sprintf("protected-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, "hashed-password")
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
@@ -91,7 +89,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("Token Claims Extraction with Workflow Creation", func(t *testing.T) {
 		// Create real user in database
 		userEmail := fmt.Sprintf("claims-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, "hashed-password")
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
@@ -123,7 +121,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		// Verify the workflow is associated with the correct user in database
 		workflowID := response["id"].(string)
 		var dbUserID string
-		err = testDB.Pool.QueryRow(txCtx, 
+		err = testDB.Pool.QueryRow(context.Background(), 
 			"SELECT created_by_user_id FROM workflows WHERE id = $1", 
 			workflowID).Scan(&dbUserID)
 		require.NoError(t, err)
@@ -133,7 +131,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("Multiple Concurrent Requests with Database User", func(t *testing.T) {
 		// Create real user in database
 		userEmail := fmt.Sprintf("concurrent-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, "hashed-password")
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
@@ -188,7 +186,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("Token Reuse with Database User", func(t *testing.T) {
 		// Create real user in database
 		userEmail := fmt.Sprintf("reuse-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, "hashed-password")
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
@@ -215,7 +213,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("Expired Token Handling", func(t *testing.T) {
 		// Create real user in database
 		userEmail := fmt.Sprintf("expired-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, "hashed-password")
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token with very short expiration (1 millisecond)
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 1*time.Millisecond)
@@ -245,10 +243,10 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 	t.Run("User Access Control - Own Resources Only", func(t *testing.T) {
 		// Create two different users
 		userEmail1 := fmt.Sprintf("user1-auth-db-%d@example.com", time.Now().UnixNano())
-		userID1 := testDB.CreateTestUserWithContext(t, txCtx, userEmail1, "hashed-password")
+		userID1 := testDB.CreateTestUser(t, userEmail1, "hashed-password")
 		
 		userEmail2 := fmt.Sprintf("user2-auth-db-%d@example.com", time.Now().UnixNano())
-		userID2 := testDB.CreateTestUserWithContext(t, txCtx, userEmail2, "hashed-password")
+		userID2 := testDB.CreateTestUser(t, userEmail2, "hashed-password")
 
 		// Generate tokens for both users
 		token1, err := jwtManager.GenerateToken(context.Background(), userID1, userEmail1, []string{}, 24*time.Hour)
@@ -301,7 +299,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		hashedPassword, err := testDB.HashPassword(testPassword)
 		require.NoError(t, err)
 		
-		userID := testDB.CreateTestUserWithContext(t, txCtx, userEmail, hashedPassword)
+		userID := testDB.CreateTestUser(t, userEmail, hashedPassword)
 
 		// Test successful login
 		loginReq := map[string]interface{}{

@@ -166,7 +166,7 @@ get_test_results() {
     
     if [[ -n "$pod_name" ]]; then
         log_info "Getting test results..."
-        kubectl logs "$pod_name" -n "$NAMESPACE" | tail -50
+        kubectl logs "$pod_name" -n "$NAMESPACE" | tail -200
     fi
 }
 
