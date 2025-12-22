@@ -1,195 +1,248 @@
 name: In-Cluster Integration Tests
 
+# ==============================================================================
+# Reusable Workflow for In-Cluster Go Testing
+# ==============================================================================
+# This workflow can be called by other workflows to run Go integration tests
+# in a Kubernetes cluster environment.
+#
+# Usage in other workflows:
+#   jobs:
+#     integration-tests:
+#       uses: ./.github/workflows/in-cluster-test.yml
+#       with:
+#         test-path: "./tests/integration"
+#         test-name: "integration-tests"
+#         timeout: 600
+# ==============================================================================
+
 on:
   workflow_call:
     inputs:
-      test-suite:
-        description: 'Test suite to run (unit, integration, all)'
-        required: false
-        default: 'integration'
-        type: string
-      namespace:
-        description: 'Kubernetes namespace for testing'
-        required: false
-        default: 'intelligence-platform'
-        type: string
-      cleanup:
-        description: 'Clean up test resources after completion'
-        required: false
-        default: true
-        type: boolean
-    secrets:
-      KUBE_CONFIG:
-        description: 'Base64 encoded kubeconfig for cluster access'
+      test-path:
+        description: 'Path to test files (e.g., ./tests/integration)'
         required: true
-      REGISTRY_USERNAME:
-        description: 'Container registry username'
+        type: string
+      test-name:
+        description: 'Name for the test suite (used in job names and artifacts)'
+        required: true
+        type: string
+      timeout:
+        description: 'Timeout in seconds for test execution'
         required: false
-      REGISTRY_PASSWORD:
-        description: 'Container registry password'
+        type: number
+        default: 600
+      image-tag:
+        description: 'Docker image tag to use for testing'
+        required: false
+        type: string
+        default: 'ci-test'
+      namespace:
+        description: 'Kubernetes namespace to use'
+        required: false
+        type: string
+        default: 'intelligence-platform'
+    secrets:
+      BOT_GITHUB_TOKEN:
+        required: false
+      BOT_GITHUB_USERNAME:
+        required: false
+      AWS_ROLE_ARN:
         required: false
 
-env:
-  NAMESPACE: ${{ inputs.namespace }}
-  TEST_SUITE: ${{ inputs.test-suite }}
-  CLEANUP: ${{ inputs.cleanup }}
-  IMAGE_TAG: ${{ github.sha }}
+permissions:
+  id-token: write      # Required for AWS OIDC authentication
+  contents: read
+  pull-requests: write
 
 jobs:
-  validate-dependencies:
-    name: Validate Platform Dependencies
+  in-cluster-tests:
+    name: ${{ inputs.test-name }} Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Configure kubectl
-      run: |
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Validate platform dependencies
-      run: |
-        ./scripts/ci/validate-platform-dependencies.sh
-
-    - name: Run pre-deployment diagnostics
-      run: |
-        ./scripts/ci/pre-deploy-diagnostics.sh
-
-  build-test-image:
-    name: Build Test Image
-    runs-on: ubuntu-latest
-    needs: validate-dependencies
-    outputs:
-      image-tag: ${{ steps.build.outputs.image-tag }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.21'
-
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Login to Container Registry
-      if: ${{ secrets.REGISTRY_USERNAME != '' }}
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-
-    - name: Build test image
-      id: build
-      run: |
-        ./scripts/ci/build.sh ci ${{ env.IMAGE_TAG }}
-        echo "image-tag=${{ env.IMAGE_TAG }}" >> $GITHUB_OUTPUT
-
-  apply-ci-optimizations:
-    name: Apply CI Optimizations
-    runs-on: ubuntu-latest
-    needs: validate-dependencies
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Configure kubectl
-      run: |
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Apply resource optimizations
-      run: |
-        ./scripts/patches/00-apply-all-patches.sh
-
-  run-integration-tests:
-    name: Run Integration Tests
-    runs-on: ubuntu-latest
-    needs: [build-test-image, apply-ci-optimizations]
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Configure kubectl
-      run: |
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Run in-cluster tests
-      env:
-        IMAGE_TAG: ${{ needs.build-test-image.outputs.image-tag }}
-      run: |
-        ./scripts/ci/in-cluster-test.sh ${{ env.TEST_SUITE }}
-
-    - name: Collect test results
-      if: always()
-      run: |
-        # Export test results and logs
-        kubectl get jobs -n ${{ env.NAMESPACE }} -l component=test -o wide
-        
-        # Get test logs
-        for job in $(kubectl get jobs -n ${{ env.NAMESPACE }} -l component=test -o name); do
-          echo "=== Logs for $job ==="
-          kubectl logs $job -n ${{ env.NAMESPACE }} || true
-        done
-
-    - name: Run post-deployment diagnostics
-      if: always()
-      run: |
-        ./scripts/ci/post-deploy-diagnostics.sh
-
-  cleanup:
-    name: Cleanup Test Resources
-    runs-on: ubuntu-latest
-    needs: [run-integration-tests]
-    if: always() && inputs.cleanup
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Configure kubectl
-      run: |
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-        chmod 600 ~/.kube/config
-
-    - name: Clean up test resources
-      run: |
-        # Clean up test jobs
-        kubectl delete jobs -n ${{ env.NAMESPACE }} -l component=test --ignore-not-found=true
-        
-        # Clean up test pods
-        kubectl delete pods -n ${{ env.NAMESPACE }} -l component=test --ignore-not-found=true
-        
-        echo "✅ Test resources cleaned up"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.BOT_GITHUB_TOKEN || github.token }}
+      
+      - name: Checkout zerotouch-platform
+        uses: actions/checkout@v4
+        with:
+          repository: 'arun4infra/zerotouch-platform'
+          path: 'zerotouch-platform'
+          token: ${{ secrets.BOT_GITHUB_TOKEN || github.token }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+          mask-aws-account-id: true
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build test image
+        run: |
+          docker build -t ide-orchestrator:${{ inputs.image-tag }} .
+      
+      - name: Create Kind configuration
+        run: |
+          # Install kind if not available
+          if ! command -v kind &> /dev/null; then
+            echo "Installing kind..."
+            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+            chmod +x ./kind
+            sudo mv ./kind /usr/local/bin/kind
+          fi
+          
+          # Create Kind config that mounts zerotouch-platform subdirectory to /repo
+          mkdir -p /tmp/kind
+          cat > /tmp/kind/config.yaml << EOF
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          name: zerotouch-preview
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            # PostgreSQL port
+            - containerPort: 30432
+              hostPort: 5432
+              protocol: TCP
+            # DeepAgents Runtime port
+            - containerPort: 30080
+              hostPort: 8080
+              protocol: TCP
+            extraMounts:
+            # Mount zerotouch-platform subdirectory for ArgoCD to sync from
+            - hostPath: $(pwd)/zerotouch-platform
+              containerPath: /repo
+              readOnly: true
+          EOF
+      
+      - name: Set up Kind cluster
+        run: |
+          kind create cluster --config /tmp/kind/config.yaml
+          # Set kubectl context and label nodes
+          kubectl config use-context kind-zerotouch-preview
+          kubectl label nodes --all workload.bizmatters.dev/databases=true --overwrite
+      
+      - name: Load Docker image into Kind
+        run: |
+          kind load docker-image ide-orchestrator:${{ inputs.image-tag }} --name zerotouch-preview
+      
+      - name: Bootstrap platform
+        env:
+          BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+        run: |
+          # Bootstrap the platform using the existing zerotouch-platform
+          cd zerotouch-platform
+          chmod +x scripts/bootstrap/01-master-bootstrap.sh
+          ./scripts/bootstrap/01-master-bootstrap.sh --mode preview
+      
+      - name: Apply preview patches
+        run: |
+          # Apply preview environment patches for resource optimization
+          chmod +x scripts/patches/00-apply-all-patches.sh
+          ./scripts/patches/00-apply-all-patches.sh --force
+      
+      - name: Run pre-deploy diagnostics
+        run: |
+          # Run pre-deployment diagnostics
+          chmod +x scripts/ci/pre-deploy-diagnostics.sh
+          ./scripts/ci/pre-deploy-diagnostics.sh
+      
+      - name: Deploy service
+        env:
+          IMAGE_TAG: ${{ inputs.image-tag }}
+          NAMESPACE: ${{ inputs.namespace }}
+        run: |
+          # Deploy the service using existing scripts
+          ./scripts/ci/deploy.sh
+      
+      - name: Run post-deploy diagnostics
+        env:
+          NAMESPACE: ${{ inputs.namespace }}
+        run: |
+          # Run post-deployment diagnostics
+          chmod +x scripts/ci/post-deploy-diagnostics.sh
+          ./scripts/ci/post-deploy-diagnostics.sh ${{ inputs.namespace }} ide-orchestrator
+      
+      - name: Run in-cluster tests
+        env:
+          TEST_PATH: ${{ inputs.test-path }}
+          TEST_NAME: ${{ inputs.test-name }}
+          TIMEOUT: ${{ inputs.timeout }}
+          NAMESPACE: ${{ inputs.namespace }}
+          # JWT secret for testing
+          JWT_SECRET: "test-secret-key-for-ci-testing"
+        run: |
+          # Create and run test job using template
+          export JOB_NAME="${{ inputs.test-name }}-$(date +%s)"
+          
+          # Run in-cluster tests using the existing script
+          ./scripts/ci/in-cluster-test.sh "${{ inputs.test-path }}" "${{ inputs.test-name }}" ${{ inputs.timeout }}
+      
+      - name: Comment PR with test results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testName = '${{ inputs.test-name }}';
+            
+            const body = `## ✅ ${testName} Tests Completed
+            
+            **Infrastructure:** In-Cluster Kubernetes (Kind + ArgoCD)
+            **Test Path:** \`${{ inputs.test-path }}\`
+            **Language:** Go
+            **Coverage:** Real PostgreSQL + DeepAgents Runtime
+            
+            🎉 Tests completed successfully! Check the workflow logs for detailed results.
+            
+            [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          # Get logs from failed pods for debugging
+          if kubectl get pods -n ${{ inputs.namespace }} -l test-suite=${{ inputs.test-name }} --field-selector=status.phase=Failed -o name | grep -q .; then
+            echo "=== Failed Pod Logs ==="
+            kubectl get pods -n ${{ inputs.namespace }} -l test-suite=${{ inputs.test-name }} --field-selector=status.phase=Failed -o name | while read pod; do
+              echo "--- Logs for $pod ---"
+              kubectl logs $pod -n ${{ inputs.namespace }} || true
+            done
+          fi
+          
+          # Clean up test jobs
+          kubectl delete jobs -n ${{ inputs.namespace }} -l test-suite=${{ inputs.test-name }} --ignore-not-found=true
+          
+          # Clean up the Kind cluster
+          kind delete cluster --name zerotouch-preview || true

@@ -6,9 +6,9 @@ name: Quality Gate
 # adding new quality check workflows (linting, unit tests, security scans, etc.).
 
 on:
-  # Trigger after both test workflows complete
+  # Trigger after test workflows complete
   workflow_run:
-    workflows: ["Spec Generation Tests (In-Cluster)", "NATS Events Integration Tests"]
+    workflows: ["Integration Tests", "JWT Validation Tests", "Unit Tests", "Code Quality"]
     types: [completed]
     branches: [main]
   # Allow manual trigger for testing

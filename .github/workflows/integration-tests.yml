@@ -1,0 +1,48 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'Dockerfile'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/integration-tests.yml'
+      - '.github/workflows/in-cluster-test.yml'
+      - 'tests/integration/**'
+      - 'scripts/ci/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'Dockerfile'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/integration-tests.yml'
+      - '.github/workflows/in-cluster-test.yml'
+      - 'tests/integration/**'
+      - 'scripts/ci/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write  # Required for AWS OIDC authentication in reusable workflow
+
+jobs:
+  integration-tests:
+    uses: ./.github/workflows/in-cluster-test.yml
+    with:
+      test-path: "./tests/integration"
+      test-name: "integration-tests"
+      timeout: 600
+      namespace: "intelligence-platform"
+    secrets:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
