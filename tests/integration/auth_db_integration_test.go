@@ -21,6 +21,8 @@ import (
 )
 
 // TestAuthDatabaseIntegration tests critical auth validations that require database access
+// NOTE: JWT-specific validation tests have been moved to jwt_validation_integration_test.go
+// This file focuses on database-specific authentication integration tests
 func TestAuthDatabaseIntegration(t *testing.T) {
 	// Setup test environment with real infrastructure
 	testDB := helpers.NewTestDatabase(t)
@@ -60,16 +62,16 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		})
 	})
 
-	t.Run("Protected Endpoint Access with Database User", func(t *testing.T) {
+	t.Run("Database User Authentication Integration", func(t *testing.T) {
 		// Create real user in database
-		userEmail := fmt.Sprintf("protected-auth-db-%d@example.com", time.Now().UnixNano())
+		userEmail := fmt.Sprintf("db-auth-%d@example.com", time.Now().UnixNano())
 		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
 		require.NoError(t, err)
 
-		// Test access with valid token
+		// Test that database user can access protected endpoints
 		req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
@@ -86,19 +88,19 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		assert.Equal(t, "Access granted", response["message"])
 	})
 
-	t.Run("Token Claims Extraction with Workflow Creation", func(t *testing.T) {
+	t.Run("Database User Workflow Creation", func(t *testing.T) {
 		// Create real user in database
-		userEmail := fmt.Sprintf("claims-auth-db-%d@example.com", time.Now().UnixNano())
+		userEmail := fmt.Sprintf("db-workflow-%d@example.com", time.Now().UnixNano())
 		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
 		
 		// Generate token for real user
 		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
 		require.NoError(t, err)
 
-		// Create workflow to test claims extraction in middleware
+		// Create workflow to test database integration with authentication
 		workflowReq := map[string]interface{}{
-			"name":        "Claims Test Workflow",
-			"description": "Testing claims extraction with database user",
+			"name":        "Database Integration Workflow",
+			"description": "Testing database integration with authentication",
 		}
 		workflowBody, _ := json.Marshal(workflowReq)
 
@@ -116,7 +118,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 
 		// Verify the workflow was created with correct user context
 		assert.NotEmpty(t, response["id"])
-		assert.Equal(t, "Claims Test Workflow", response["name"])
+		assert.Equal(t, "Database Integration Workflow", response["name"])
 		
 		// Verify the workflow is associated with the correct user in database
 		workflowID := response["id"].(string)
@@ -128,124 +130,12 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		assert.Equal(t, userID, dbUserID)
 	})
 
-	t.Run("Multiple Concurrent Requests with Database User", func(t *testing.T) {
-		// Create real user in database
-		userEmail := fmt.Sprintf("concurrent-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
-		
-		// Generate token for real user
-		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
-		require.NoError(t, err)
-
-		const numRequests = 10
-		results := make(chan int, numRequests)
-		userIDs := make(chan string, numRequests)
-
-		// Make multiple concurrent requests with the same token
-		for i := 0; i < numRequests; i++ {
-			go func() {
-				req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
-				req.Header.Set("Authorization", "Bearer "+token)
-				w := httptest.NewRecorder()
-				router.ServeHTTP(w, req)
-				
-				results <- w.Code
-				
-				if w.Code == http.StatusOK {
-					var response map[string]interface{}
-					json.Unmarshal(w.Body.Bytes(), &response)
-					if uid, ok := response["user_id"].(string); ok {
-						userIDs <- uid
-					}
-				}
-			}()
-		}
-
-		// Collect results - all should succeed with same user ID
-		for i := 0; i < numRequests; i++ {
-			select {
-			case statusCode := <-results:
-				assert.Equal(t, http.StatusOK, statusCode)
-			case <-time.After(5 * time.Second):
-				t.Fatal("Timeout waiting for concurrent requests")
-			}
-		}
-
-		// Verify all requests returned the same user ID
-		for i := 0; i < numRequests; i++ {
-			select {
-			case returnedUserID := <-userIDs:
-				assert.Equal(t, userID, returnedUserID)
-			case <-time.After(1 * time.Second):
-				// Some requests might not have returned user_id, that's ok
-				break
-			}
-		}
-	})
-
-	t.Run("Token Reuse with Database User", func(t *testing.T) {
-		// Create real user in database
-		userEmail := fmt.Sprintf("reuse-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
-		
-		// Generate token for real user
-		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
-		require.NoError(t, err)
-
-		// Use the same token multiple times - should work (JWT is stateless)
-		for i := 0; i < 5; i++ {
-			req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
-			req.Header.Set("Authorization", "Bearer "+token)
-			w := httptest.NewRecorder()
-			router.ServeHTTP(w, req)
-
-			assert.Equal(t, http.StatusOK, w.Code)
-
-			var response map[string]interface{}
-			err = json.Unmarshal(w.Body.Bytes(), &response)
-			require.NoError(t, err)
-
-			assert.Equal(t, userID, response["user_id"])
-			assert.Equal(t, userEmail, response["email"])
-		}
-	})
-
-	t.Run("Expired Token Handling", func(t *testing.T) {
-		// Create real user in database
-		userEmail := fmt.Sprintf("expired-auth-db-%d@example.com", time.Now().UnixNano())
-		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
-		
-		// Generate token with very short expiration (1 millisecond)
-		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 1*time.Millisecond)
-		require.NoError(t, err)
-
-		// Wait for token to expire
-		time.Sleep(10 * time.Millisecond)
-
-		// Try to use expired token
-		req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		// Should be rejected due to expiration
-		assert.Equal(t, http.StatusUnauthorized, w.Code)
-
-		var response map[string]interface{}
-		err = json.Unmarshal(w.Body.Bytes(), &response)
-		require.NoError(t, err)
-
-		// Should contain expiration-related error
-		errorMsg := response["error"].(string)
-		assert.Contains(t, errorMsg, "token")
-	})
-
-	t.Run("User Access Control - Own Resources Only", func(t *testing.T) {
-		// Create two different users
-		userEmail1 := fmt.Sprintf("user1-auth-db-%d@example.com", time.Now().UnixNano())
+	t.Run("Database User Access Control", func(t *testing.T) {
+		// Create two different users in database
+		userEmail1 := fmt.Sprintf("user1-db-%d@example.com", time.Now().UnixNano())
 		userID1 := testDB.CreateTestUser(t, userEmail1, "hashed-password")
 		
-		userEmail2 := fmt.Sprintf("user2-auth-db-%d@example.com", time.Now().UnixNano())
+		userEmail2 := fmt.Sprintf("user2-db-%d@example.com", time.Now().UnixNano())
 		userID2 := testDB.CreateTestUser(t, userEmail2, "hashed-password")
 
 		// Generate tokens for both users
@@ -257,8 +147,8 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 
 		// User 1 creates a workflow
 		workflowReq := map[string]interface{}{
-			"name":        "User 1 Workflow",
-			"description": "Testing user access control",
+			"name":        "User 1 Database Workflow",
+			"description": "Testing database-level access control",
 		}
 		workflowBody, _ := json.Marshal(workflowReq)
 
@@ -282,7 +172,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		router.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
 
-		// User 2 cannot access User 1's workflow (should get 403 Forbidden)
+		// User 2 cannot access User 1's workflow (database-level access control)
 		req = httptest.NewRequest(http.MethodGet, "/api/workflows/"+workflowID, nil)
 		req.Header.Set("Authorization", "Bearer "+token2)
 		w = httptest.NewRecorder()
@@ -290,9 +180,9 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
 
-	t.Run("Login Integration with Database", func(t *testing.T) {
+	t.Run("Database Login Integration", func(t *testing.T) {
 		// Create real user in database with known password
-		userEmail := fmt.Sprintf("login-auth-db-%d@example.com", time.Now().UnixNano())
+		userEmail := fmt.Sprintf("login-db-%d@example.com", time.Now().UnixNano())
 		testPassword := "test-password-123"
 		
 		// Hash the password properly for storage
@@ -301,7 +191,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		
 		userID := testDB.CreateTestUser(t, userEmail, hashedPassword)
 
-		// Test successful login
+		// Test successful login with database user
 		loginReq := map[string]interface{}{
 			"email":    userEmail,
 			"password": testPassword,
@@ -322,7 +212,7 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		assert.NotEmpty(t, response["token"])
 		assert.Equal(t, userID, response["user_id"])
 
-		// Test the returned token works
+		// Test the returned token works with database
 		token := response["token"].(string)
 		req = httptest.NewRequest(http.MethodGet, "/api/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -341,5 +231,33 @@ func TestAuthDatabaseIntegration(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("Database User Session Persistence", func(t *testing.T) {
+		// Test that database users maintain session state correctly
+		userEmail := fmt.Sprintf("session-db-%d@example.com", time.Now().UnixNano())
+		userID := testDB.CreateTestUser(t, userEmail, "hashed-password")
+		
+		// Generate token for real user
+		token, err := jwtManager.GenerateToken(context.Background(), userID, userEmail, []string{}, 24*time.Hour)
+		require.NoError(t, err)
+
+		// Make multiple requests to verify session persistence
+		for i := 0; i < 3; i++ {
+			req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			var response map[string]interface{}
+			err = json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+
+			// Verify consistent user identity across requests
+			assert.Equal(t, userID, response["user_id"])
+			assert.Equal(t, userEmail, response["email"])
+		}
 	})
 }
