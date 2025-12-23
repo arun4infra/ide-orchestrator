@@ -87,14 +87,22 @@ jobs:
         with:
           go-version: '1.24'
       
+      - name: Clean Go cache directory
+        run: |
+          # Clean up any existing Go cache to prevent conflicts
+          rm -rf ~/.cache/go-build/* || true
+          rm -rf ~/go/pkg/mod/* || true
+      
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-go-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-${{ inputs.test-name }}-
             ${{ runner.os }}-go-
       
       - name: Set up Docker Buildx

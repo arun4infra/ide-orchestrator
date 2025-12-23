@@ -64,6 +64,7 @@ config.local.json
 
 # Docker-related
 .dockerignore.local
+!Dockerfile.test
 
 # Swagger generated files (if auto-generated)
 docs/swagger.json
