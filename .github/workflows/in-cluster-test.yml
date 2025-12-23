@@ -142,7 +142,12 @@ jobs:
         run: |
           # Apply ide-orchestrator-specific platform patches before bootstrap
           chmod +x scripts/patches/apply-platform-patches.sh
-          ./scripts/patches/apply-platform-patches.sh
+          ./scripts/patches/apply-platform-patches.sh apply
+      
+      - name: Validate platform patches
+        run: |
+          # Validate that patches were applied correctly
+          ./scripts/patches/apply-platform-patches.sh validate
       
       - name: Bootstrap platform
         env:
