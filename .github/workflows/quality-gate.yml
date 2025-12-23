@@ -6,10 +6,10 @@ name: Quality Gate
 # adding new quality check workflows (linting, unit tests, security scans, etc.).
 
 on:
-  # Trigger after test workflows complete
-  workflow_run:
-    workflows: ["Integration Tests", "JWT Validation Tests", "Unit Tests", "Code Quality"]
-    types: [completed]
+  # Trigger on push/PR to main - let auto-discovery find all workflows
+  push:
+    branches: [main]
+  pull_request:
     branches: [main]
   # Allow manual trigger for testing
   workflow_dispatch:

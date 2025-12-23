@@ -1,4 +1,4 @@
-name: JWT Validation Tests
+name: Workflow Integration Tests
 
 on:
   push:
@@ -9,11 +9,13 @@ on:
       - 'Dockerfile.test'
       - 'go.mod'
       - 'go.sum'
-      - '.github/workflows/jwt-validation-tests.yml'
+      - '.github/workflows/workflow-integration-tests.yml'
       - '.github/workflows/in-cluster-test.yml'
       - 'scripts/ci/**'
-      - 'tests/integration/jwt_validation_integration_test.go'
-      - 'internal/auth/**'
+      - 'tests/integration/workflow_integration_test.go'
+      - 'internal/orchestration/**'
+      - 'internal/gateway/**'
+      - 'internal/models/**'
   pull_request:
     branches: [main]
     paths:
@@ -22,11 +24,13 @@ on:
       - 'Dockerfile.test'
       - 'go.mod'
       - 'go.sum'
-      - '.github/workflows/jwt-validation-tests.yml'
+      - '.github/workflows/workflow-integration-tests.yml'
       - '.github/workflows/in-cluster-test.yml'
       - 'scripts/ci/**'
-      - 'tests/integration/jwt_validation_integration_test.go'
-      - 'internal/auth/**'
+      - 'tests/integration/workflow_integration_test.go'
+      - 'internal/orchestration/**'
+      - 'internal/gateway/**'
+      - 'internal/models/**'
   workflow_dispatch:
 
 permissions:
@@ -35,12 +39,12 @@ permissions:
   id-token: write  # Required for AWS OIDC authentication in reusable workflow
 
 jobs:
-  jwt-validation-tests:
+  workflow-integration-tests:
     uses: ./.github/workflows/in-cluster-test.yml
     with:
-      test-path: "tests/integration/jwt_validation_integration_test.go"
-      test-name: "jwt-validation"
-      timeout: 300
+      test-path: "tests/integration/workflow_integration_test.go"
+      test-name: "workflow-integration"
+      timeout: 400
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}

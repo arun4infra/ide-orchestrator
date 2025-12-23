@@ -128,12 +128,26 @@ spec:
           # Run pre-compiled tests to avoid memory issues during compilation
           echo "Running pre-compiled integration tests..."
           
-          if ./integration-tests -test.v -test.timeout=10m 2>&1 | tee artifacts/test-output.log; then
-            GO_TEST_EXIT_CODE=0
-            echo "✅ Go tests passed"
+          # Check if we're running a specific test file or all tests
+          if [[ "{{TEST_PATH}}" == *".go" ]]; then
+            echo "Running specific test file: {{TEST_PATH}}"
+            # For single test files, we need to run go test directly since the pre-compiled binary includes all tests
+            if go test -v -timeout=10m "{{TEST_PATH}}" 2>&1 | tee artifacts/test-output.log; then
+              GO_TEST_EXIT_CODE=0
+              echo "✅ Go tests passed"
+            else
+              GO_TEST_EXIT_CODE=$?
+              echo "❌ Go tests failed with exit code: $GO_TEST_EXIT_CODE"
+            fi
           else
-            GO_TEST_EXIT_CODE=$?
-            echo "❌ Go tests failed with exit code: $GO_TEST_EXIT_CODE"
+            echo "Running all integration tests from directory: {{TEST_PATH}}"
+            if ./integration-tests -test.v -test.timeout=10m 2>&1 | tee artifacts/test-output.log; then
+              GO_TEST_EXIT_CODE=0
+              echo "✅ Go tests passed"
+            else
+              GO_TEST_EXIT_CODE=$?
+              echo "❌ Go tests failed with exit code: $GO_TEST_EXIT_CODE"
+            fi
           fi
           
           # Also generate JSON output for parsing (if test binary supports it)

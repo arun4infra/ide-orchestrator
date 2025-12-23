@@ -1,32 +1,34 @@
-name: Integration Tests
+name: Auth Integration Tests
 
 on:
   push:
     branches: [main]
     paths:
       - '**/*.go'
-      - '**/*.yml'
-      - '**/*.yaml'
       - 'Dockerfile'
+      - 'Dockerfile.test'
       - 'go.mod'
       - 'go.sum'
-      - '.github/workflows/integration-tests.yml'
+      - '.github/workflows/auth-integration-tests.yml'
       - '.github/workflows/in-cluster-test.yml'
-      - 'tests/integration/**'
       - 'scripts/ci/**'
+      - 'tests/integration/auth_integration_test.go'
+      - 'internal/auth/**'
+      - 'internal/gateway/**'
   pull_request:
     branches: [main]
     paths:
       - '**/*.go'
-      - '**/*.yml'
-      - '**/*.yaml'
       - 'Dockerfile'
+      - 'Dockerfile.test'
       - 'go.mod'
       - 'go.sum'
-      - '.github/workflows/integration-tests.yml'
+      - '.github/workflows/auth-integration-tests.yml'
       - '.github/workflows/in-cluster-test.yml'
-      - 'tests/integration/**'
       - 'scripts/ci/**'
+      - 'tests/integration/auth_integration_test.go'
+      - 'internal/auth/**'
+      - 'internal/gateway/**'
   workflow_dispatch:
 
 permissions:
@@ -35,13 +37,12 @@ permissions:
   id-token: write  # Required for AWS OIDC authentication in reusable workflow
 
 jobs:
-  integration-tests:
+  auth-integration-tests:
     uses: ./.github/workflows/in-cluster-test.yml
     with:
-      test-path: "./tests/integration"
-      test-name: "integration-tests"
-      timeout: 600
-      namespace: "intelligence-platform"
+      test-path: "tests/integration/auth_integration_test.go"
+      test-name: "auth-integration"
+      timeout: 300
     secrets:
       BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
       BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
