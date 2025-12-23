@@ -90,20 +90,23 @@ jobs:
       - name: Clean Go cache directory
         run: |
           # Clean up any existing Go cache to prevent conflicts
-          rm -rf ~/.cache/go-build/* || true
-          rm -rf ~/go/pkg/mod/* || true
+          # Use sudo to handle permission issues with Go module cache
+          sudo rm -rf ~/.cache/go-build/* || true
+          sudo rm -rf ~/go/pkg/mod/* || true
+          # Recreate directories with proper permissions
+          mkdir -p ~/.cache/go-build ~/go/pkg/mod
       
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-go-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-
-            ${{ runner.os }}-go-${{ inputs.test-name }}-
-            ${{ runner.os }}-go-
+      # Temporarily disable cache to avoid conflicts
+      # - name: Cache Go modules
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: |
+      #       ~/.cache/go-build
+      #       ~/go/pkg/mod
+      #     key: ${{ runner.os }}-go-v2-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-
+      #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

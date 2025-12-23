@@ -1,54 +1,49 @@
 #!/bin/bash
-set -euo pipefail
+# Apply all preview/Kind patches to ide-orchestrator claims
+# This script runs all numbered patch scripts in order
+#
+# Usage: ./00-apply-all-patches.sh [--force]
+#
+# Run this BEFORE deploying to preview environment
 
-# Master Patch Application Script
-# Applies all CI environment optimizations
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NAMESPACE="${NAMESPACE:-intelligence-platform}"
 
-echo "🔧 Applying all CI environment patches..."
+# Pass through arguments (e.g., --force)
+ARGS="$@"
 
-# Check if kubectl is available
-if ! command -v kubectl &> /dev/null; then
-    echo "❌ kubectl is not installed"
-    exit 1
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║   Applying Preview Environment Patches                      ║${NC}"
+echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Check if patches already applied
+PATCH_MARKER="/tmp/.ide-orchestrator-patches-applied"
+if [ -f "$PATCH_MARKER" ] && [ "$1" != "--force" ]; then
+    echo -e "${YELLOW}Patches already applied. Use --force to reapply.${NC}"
+    exit 0
 fi
 
-# Check cluster connectivity
-if ! kubectl cluster-info &> /dev/null; then
-    echo "❌ Cannot connect to Kubernetes cluster"
-    exit 1
-fi
-
-# Apply patches in order
-patches=(
-    "01-downsize-postgres.sh"
-    "02-downsize-deepagents-runtime.sh"
-    "03-downsize-application.sh"
-)
-
-for patch in "${patches[@]}"; do
-    patch_file="${SCRIPT_DIR}/${patch}"
-    
-    if [[ -f "${patch_file}" ]]; then
-        echo "🔧 Applying patch: ${patch}"
-        bash "${patch_file}"
-        
-        if [[ $? -eq 0 ]]; then
-            echo "✅ Patch ${patch} applied successfully"
-        else
-            echo "❌ Patch ${patch} failed"
-            exit 1
-        fi
-    else
-        echo "⚠️  Patch file not found: ${patch_file}"
+# Run all numbered patch scripts (01-*, 02-*, etc.)
+for script in "$SCRIPT_DIR"/[0-9][0-9]-*.sh; do
+    if [ -f "$script" ] && [ "$script" != "$0" ]; then
+        script_name=$(basename "$script")
+        echo -e "${BLUE}Running: $script_name${NC}"
+        chmod +x "$script"
+        "$script" $ARGS
+        echo ""
     fi
 done
 
-echo "✅ All CI environment patches applied successfully!"
+# Mark patches as applied
+touch "$PATCH_MARKER"
 
-# Show resource usage after patches
-echo "📊 Resource usage after patches:"
-kubectl top nodes 2>/dev/null || echo "Metrics not available"
-kubectl get pods -n "${NAMESPACE}" -o wide
+echo -e "${GREEN}✓ All preview patches applied successfully${NC}"
