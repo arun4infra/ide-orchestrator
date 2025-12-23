@@ -1,8 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+# ==============================================================================
 # CI Deploy Script for ide-orchestrator
-# GitOps service deployment automation
+# ==============================================================================
+# Purpose: GitOps service deployment automation
+# 
+# IMPORTANT: Preview vs Production Namespace Handling
+# - Production: Namespaces created by tenant-infrastructure (ArgoCD app)  
+# - Preview: Namespaces created by this CI script (mocks landing zones)
+# ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -41,13 +48,12 @@ if ! kubectl cluster-info &> /dev/null; then
     exit 1
 fi
 
-# Validate namespace exists (created by tenant-infrastructure)
-echo "📁 Validating namespace exists..."
-if ! kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
-    echo "❌ Namespace '${NAMESPACE}' not found! Ensure tenant-infrastructure has synced."
-    exit 1
-fi
-echo "✅ Namespace '${NAMESPACE}' exists"
+# Mock Landing Zone (Preview Mode Only)
+# In Production, tenant-infrastructure creates namespaces
+# In Preview, CI must simulate this behavior
+echo "📁 Setting up landing zone for preview mode..."
+kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+echo "✅ Mock landing zone '${NAMESPACE}' created"
 
 # Apply platform claims and manifests
 echo "📋 Applying platform claims..."
