@@ -9,6 +9,7 @@
 # Test binaries
 *.test
 !Dockerfile.test
+zerotouch-platform
 
 # Output of the go coverage tool
 *.out

@@ -82,6 +82,39 @@ jobs:
           aws-region: ap-south-1
           mask-aws-account-id: true
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Create Kind configuration
+        run: |
+          # Ensure zerotouch-platform exists
+          if [[ ! -d "zerotouch-platform" ]]; then
+            echo "zerotouch-platform directory not found in workflow"
+            exit 1
+          fi
+          
+          # Setup Kind cluster using shared script
+          ./scripts/ci/setup-kind-cluster.sh
+      
+      - name: Set up Kind cluster
+        run: |
+          # Kind cluster is already set up by the previous step
+          echo "✅ Kind cluster ready"
+      
+      - name: Bootstrap platform
+        env:
+          BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+        run: |
+          # Bootstrap platform using shared script
+          ./scripts/ci/bootstrap-platform.sh preview
+      
+      - name: Apply preview patches
+        run: |
+          # Apply patches using shared script
+          ./scripts/ci/apply-patches.sh --force
+      
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -108,46 +141,13 @@ jobs:
       #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-
       #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
       - name: Build test image
         run: |
           docker build -f Dockerfile.test -t ide-orchestrator:${{ inputs.image-tag }} .
       
-      - name: Create Kind configuration
-        run: |
-          # Ensure zerotouch-platform exists
-          if [[ ! -d "zerotouch-platform" ]]; then
-            echo "zerotouch-platform directory not found in workflow"
-            exit 1
-          fi
-          
-          # Setup Kind cluster using shared script
-          ./scripts/ci/setup-kind-cluster.sh
-      
-      - name: Set up Kind cluster
-        run: |
-          # Kind cluster is already set up by the previous step
-          echo "✅ Kind cluster ready"
-      
       - name: Load Docker image into Kind
         run: |
           kind load docker-image ide-orchestrator:${{ inputs.image-tag }} --name zerotouch-preview
-      
-      - name: Bootstrap platform
-        env:
-          BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
-          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-          TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
-        run: |
-          # Bootstrap platform using shared script
-          ./scripts/ci/bootstrap-platform.sh preview
-      
-      - name: Apply preview patches
-        run: |
-          # Apply patches using shared script
-          ./scripts/ci/apply-patches.sh --force
       
       - name: Run pre-deploy diagnostics
         run: |
