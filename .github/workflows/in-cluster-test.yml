@@ -138,6 +138,12 @@ jobs:
         run: |
           kind load docker-image ide-orchestrator:${{ inputs.image-tag }} --name zerotouch-preview
       
+      - name: Apply platform patches
+        run: |
+          # Apply ide-orchestrator-specific platform patches before bootstrap
+          chmod +x scripts/patches/apply-platform-patches.sh
+          ./scripts/patches/apply-platform-patches.sh
+      
       - name: Bootstrap platform
         env:
           BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
