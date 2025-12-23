@@ -91,19 +91,48 @@ jobs:
       
       - name: Create Kind configuration
         run: |
-          # Ensure zerotouch-platform exists
-          if [[ ! -d "zerotouch-platform" ]]; then
-            echo "zerotouch-platform directory not found in workflow"
-            exit 1
+          # Install kind if not available
+          if ! command -v kind &> /dev/null; then
+            echo "Installing kind..."
+            curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+            chmod +x ./kind
+            sudo mv ./kind /usr/local/bin/kind
           fi
           
-          # Setup Kind cluster using shared script
-          ./scripts/ci/setup-kind-cluster.sh
+          # Create Kind config that mounts zerotouch-platform subdirectory to /repo
+          mkdir -p /tmp/kind
+          cat > /tmp/kind/config.yaml << EOF
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          name: zerotouch-preview
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            # NATS client port
+            - containerPort: 30080
+              hostPort: 4222
+              protocol: TCP
+            # PostgreSQL port
+            - containerPort: 30432
+              hostPort: 5432
+              protocol: TCP
+            # DeepAgents Runtime port
+            - containerPort: 30081
+              hostPort: 8080
+              protocol: TCP
+            extraMounts:
+            # Mount zerotouch-platform subdirectory for ArgoCD to sync from
+            - hostPath: $(pwd)/zerotouch-platform
+              containerPath: /repo
+              readOnly: true
+          EOF
       
       - name: Set up Kind cluster
         run: |
-          # Kind cluster is already set up by the previous step
-          echo "✅ Kind cluster ready"
+          kind create cluster --config /tmp/kind/config.yaml
+          # Set kubectl context and label nodes
+          kubectl config use-context kind-zerotouch-preview
+          kubectl label nodes --all workload.bizmatters.dev/databases=true --overwrite
       
       - name: Load Docker image into Kind
         run: |
@@ -125,40 +154,6 @@ jobs:
           # Apply preview environment patches for resource optimization
           chmod +x scripts/patches/00-apply-all-patches.sh
           ./scripts/patches/00-apply-all-patches.sh --force
-      
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-      
-      - name: Clean Go cache directory
-        run: |
-          # Clean up any existing Go cache to prevent conflicts
-          # Use sudo to handle permission issues with Go module cache
-          sudo rm -rf ~/.cache/go-build/* || true
-          sudo rm -rf ~/go/pkg/mod/* || true
-          # Recreate directories with proper permissions
-          mkdir -p ~/.cache/go-build ~/go/pkg/mod
-      
-      # Temporarily disable cache to avoid conflicts
-      # - name: Cache Go modules
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: |
-      #       ~/.cache/go-build
-      #       ~/go/pkg/mod
-      #     key: ${{ runner.os }}-go-v2-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-${{ hashFiles('**/go.sum') }}-
-      #       ${{ runner.os }}-go-v2-${{ inputs.test-name }}-
-      
-      - name: Build test image
-        run: |
-          docker build -f Dockerfile.test -t ide-orchestrator:${{ inputs.image-tag }} .
-      
-      - name: Load Docker image into Kind
-        run: |
-          kind load docker-image ide-orchestrator:${{ inputs.image-tag }} --name zerotouch-preview
       
       - name: Run pre-deploy diagnostics
         run: |
