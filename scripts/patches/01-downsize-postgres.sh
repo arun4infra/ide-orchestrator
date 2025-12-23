@@ -1,70 +1,78 @@
 #!/bin/bash
-set -euo pipefail
+# Downsize PostgreSQL instance for preview environments
+# Reduces: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)
+# Storage: 20GB → 2GB for Kind clusters
 
-# PostgreSQL Resource Optimization for CI
-# Reduces PostgreSQL resource requirements for CI environment
+set -e
 
-NAMESPACE="${NAMESPACE:-intelligence-platform}"
-CLUSTER_NAME="${CLUSTER_NAME:-ide-orchestrator-db}"
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-echo "🔧 Optimizing PostgreSQL resources for CI..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Check if PostgreSQL cluster exists
-if ! kubectl get cluster.postgresql.cnpg.io "${CLUSTER_NAME}" -n "${NAMESPACE}" &>/dev/null; then
-    echo "⚠️  PostgreSQL cluster ${CLUSTER_NAME} not found in namespace ${NAMESPACE}"
-    echo "ℹ️  Skipping PostgreSQL optimization..."
-    exit 0
+FORCE_UPDATE=false
+
+# Parse arguments
+if [ "$1" = "--force" ]; then
+    FORCE_UPDATE=true
 fi
 
-# Apply resource optimizations
-echo "📉 Reducing PostgreSQL resource requirements..."
+# Check if this is preview mode
+IS_PREVIEW_MODE=false
 
-kubectl patch cluster.postgresql.cnpg.io "${CLUSTER_NAME}" -n "${NAMESPACE}" --type='merge' -p='
-{
-  "spec": {
-    "instances": 1,
-    "postgresql": {
-      "parameters": {
-        "max_connections": "50",
-        "shared_buffers": "32MB",
-        "effective_cache_size": "128MB",
-        "maintenance_work_mem": "16MB",
-        "checkpoint_completion_target": "0.9",
-        "wal_buffers": "1MB",
-        "default_statistics_target": "50",
-        "random_page_cost": "1.1",
-        "effective_io_concurrency": "200",
-        "work_mem": "2MB",
-        "min_wal_size": "32MB",
-        "max_wal_size": "128MB"
-      }
-    },
-    "resources": {
-      "requests": {
-        "memory": "256Mi",
-        "cpu": "100m"
-      },
-      "limits": {
-        "memory": "512Mi",
-        "cpu": "500m"
-      }
-    },
-    "storage": {
-      "size": "2Gi"
-    }
-  }
-}'
+if [ "$FORCE_UPDATE" = true ]; then
+    IS_PREVIEW_MODE=true
+elif command -v kubectl > /dev/null 2>&1 && kubectl cluster-info > /dev/null 2>&1; then
+    # Check if running on Kind cluster (no control-plane taints on nodes)
+    if ! kubectl get nodes -o jsonpath='{.items[*].spec.taints[?(@.key=="node-role.kubernetes.io/control-plane")]}' 2>/dev/null | grep -q "control-plane"; then
+        IS_PREVIEW_MODE=true
+    fi
+fi
 
-# Wait for cluster to be ready
-echo "⏳ Waiting for PostgreSQL cluster to be ready..."
-kubectl wait --for=condition=ready \
-    cluster.postgresql.cnpg.io/"${CLUSTER_NAME}" \
-    -n "${NAMESPACE}" \
-    --timeout=300s
+if [ "$IS_PREVIEW_MODE" = true ]; then
+    echo -e "${BLUE}🔧 Optimizing PostgreSQL resources for preview mode...${NC}"
+    
+    POSTGRES_CLAIM="$REPO_ROOT/platform/claims/intelligence-deepagents/postgres-claim.yaml"
+    
+    if [ -f "$POSTGRES_CLAIM" ]; then
+        # Downsize from medium to micro (for Kind clusters, go directly to micro)
+        if grep -q "size: medium" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/size: medium/size: micro/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "  ${GREEN}✓${NC} PostgreSQL: medium → micro (100m-500m CPU, 256Mi-1Gi RAM)"
+        elif grep -q "size: small" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/size: small/size: micro/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "  ${GREEN}✓${NC} PostgreSQL: small → micro (100m-500m CPU, 256Mi-1Gi RAM)"
+        else
+            echo -e "  ${YELLOW}⊘${NC} PostgreSQL already at micro size"
+        fi
+        
+        # Reduce storage for Kind clusters (minimum 2GB for testing)
+        if grep -q "storageGB: 20" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/storageGB: 20/storageGB: 2/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "  ${GREEN}✓${NC} PostgreSQL storage: 20GB → 2GB"
+        elif grep -q "storageGB: 10" "$POSTGRES_CLAIM" 2>/dev/null; then
+            sed -i.bak 's/storageGB: 10/storageGB: 2/g' "$POSTGRES_CLAIM"
+            rm -f "$POSTGRES_CLAIM.bak"
+            echo -e "  ${GREEN}✓${NC} PostgreSQL storage: 10GB → 2GB"
+        else
+            echo -e "  ${YELLOW}⊘${NC} PostgreSQL storage already optimized"
+        fi
+        
+        echo -e "${GREEN}✓ PostgreSQL optimization complete${NC}"
+    else
+        echo -e "${YELLOW}⚠${NC} PostgreSQL claim not found: $POSTGRES_CLAIM"
+        echo -e "${YELLOW}  Skipping PostgreSQL optimization...${NC}"
+    fi
+else
+    echo -e "${YELLOW}⊘${NC} Not in preview mode - skipping PostgreSQL optimization"
+fi
 
-echo "✅ PostgreSQL resources optimized for CI"
-
-# Show current resource usage
-echo "📊 Current PostgreSQL resource usage:"
-kubectl get cluster.postgresql.cnpg.io "${CLUSTER_NAME}" -n "${NAMESPACE}" -o wide
-kubectl get pods -n "${NAMESPACE}" -l cnpg.io/cluster="${CLUSTER_NAME}" -o wide
+exit 0

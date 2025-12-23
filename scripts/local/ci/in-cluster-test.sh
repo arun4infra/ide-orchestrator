@@ -5,10 +5,10 @@ set -euo pipefail
 # Local In-Cluster Testing Simulation
 # ==============================================================================
 # Purpose: Simulate the GitHub Actions workflow locally for development/testing
-# Usage: ./scripts/ci/in-cluster-test.sh <test_path> [test_name] [timeout]
+# Usage: ./scripts/local/ci/in-cluster-test.sh <test_path> [test_name] [timeout]
 # Examples:
-#   ./scripts/ci/in-cluster-test.sh "./tests/integration" integration-tests
-#   ./scripts/ci/in-cluster-test.sh "./internal/..." unit-tests 900
+#   ./scripts/local/ci/in-cluster-test.sh "./tests/integration" integration-tests
+#   ./scripts/local/ci/in-cluster-test.sh "./internal/..." unit-tests 900
 #
 # This script does the SAME job as the GitHub workflow but in local environment
 # ==============================================================================
@@ -90,7 +90,7 @@ build_test_image() {
 # Create Kind cluster (same as workflow)
 create_kind_cluster() {
     log_info "Creating Kind cluster..."
-    ./scripts/ci/setup-kind-cluster.sh
+    ../../ci/setup-kind-cluster.sh
     log_success "Kind cluster ready"
 }
 
@@ -120,7 +120,7 @@ bootstrap_platform() {
 # Apply preview patches (simplified for local testing)
 apply_patches() {
     log_info "Applying patches for testing..."
-    ./scripts/patches/00-apply-all-patches.sh --force
+    ../../patches/00-apply-all-patches.sh --force
     log_success "Patches applied"
 }
 
@@ -140,22 +140,22 @@ run_pre_deploy_diagnostics() {
 # Deploy service (use shared script for local deployment)
 deploy_service() {
     log_info "Deploying IDE Orchestrator service..."
-    ./scripts/ci/deploy-local-service.sh $NAMESPACE $IMAGE_TAG
+    ../../ci/deploy-local-service.sh $NAMESPACE $IMAGE_TAG
     log_success "Service deployment completed"
 }
 
 # Run database migrations (use shared script)
 run_migrations() {
     log_info "Running database migrations..."
-    ./scripts/ci/run-migrations.sh $NAMESPACE
+    ../../ci/run-migrations.sh $NAMESPACE
     log_success "Database migrations completed"
 }
 
 # Run post-deploy diagnostics (same as workflow)
 run_post_deploy_diagnostics() {
     log_info "Running post-deploy diagnostics..."
-    chmod +x scripts/ci/post-deploy-diagnostics.sh
-    ./scripts/ci/post-deploy-diagnostics.sh $NAMESPACE ide-orchestrator
+    chmod +x ../../ci/post-deploy-diagnostics.sh
+    ../../ci/post-deploy-diagnostics.sh $NAMESPACE ide-orchestrator
     log_success "Post-deploy diagnostics completed"
 }
 
@@ -163,7 +163,7 @@ run_post_deploy_diagnostics() {
 run_in_cluster_tests() {
     log_info "Running in-cluster tests using shared script..."
     
-    if ./scripts/ci/run-test-job.sh "$TEST_PATH" "$TEST_NAME" "$TIMEOUT" "$NAMESPACE" "$IMAGE_TAG"; then
+    if ../../ci/run-test-job.sh "$TEST_PATH" "$TEST_NAME" "$TIMEOUT" "$NAMESPACE" "$IMAGE_TAG"; then
         log_success "Tests completed successfully!"
         return 0
     else
