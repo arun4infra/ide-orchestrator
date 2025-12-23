@@ -173,6 +173,12 @@ jobs:
           chmod +x scripts/ci/pre-deploy-diagnostics.sh
           ./scripts/ci/pre-deploy-diagnostics.sh
       
+      - name: Validate platform dependencies
+        run: |
+          # Validate all platform dependencies are ready before deploying ide-orchestrator
+          chmod +x scripts/ci/validate-platform-dependencies.sh
+          ./scripts/ci/validate-platform-dependencies.sh
+      
       - name: Deploy service
         env:
           IMAGE_TAG: ${{ inputs.image-tag }}
