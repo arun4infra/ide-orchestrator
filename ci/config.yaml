@@ -52,4 +52,4 @@ diagnostics:
 
 # Platform configuration
 platform:
-  branch: "main"
+  branch: "refactor/services-shared-scripts"
