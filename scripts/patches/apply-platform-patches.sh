@@ -300,15 +300,14 @@ EOF
     log_success "Patch validation completed successfully"
 }
 
-main "$@"
-
 # Handle command line arguments
 case "${1:-apply}" in
     "apply")
-        main
+        main "$@"
         ;;
     "validate")
         validate_patches
+        exit $?
         ;;
     "help"|"-h"|"--help")
         echo "Usage: $0 [apply|validate|help]"
@@ -317,6 +316,7 @@ case "${1:-apply}" in
         echo "  apply     Apply platform patches (default)"
         echo "  validate  Validate that patches were applied correctly"
         echo "  help      Show this help message"
+        exit 0
         ;;
     *)
         log_error "Unknown command: $1"
