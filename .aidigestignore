@@ -1,0 +1,11 @@
+.github/          # CI workflows, bots
+.kiro/            # editor / internal tooling metadata
+artifacts/        # build outputs
+bin/              # compiled binaries
+migrations/       # DB diffs; rarely needed for reasoning
+.env              # secrets / runtime config
+.gitignore
+.aidigestignore   # obviously
+.golangci.yml     # linting rules
+go.sum
+test-binary
