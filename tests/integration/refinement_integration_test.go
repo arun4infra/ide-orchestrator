@@ -1,6 +1,3 @@
-//go:build ignore
-// +build ignore
-
 package integration
 
 import (
@@ -23,9 +20,19 @@ import (
 	"github.com/bizmatters/agent-builder/ide-orchestrator/internal/gateway"
 	"github.com/bizmatters/agent-builder/ide-orchestrator/internal/orchestration"
 	"github.com/bizmatters/agent-builder/ide-orchestrator/tests/helpers"
+	"github.com/bizmatters/agent-builder/ide-orchestrator/tests/mock"
 )
 
 func TestRefinementIntegration(t *testing.T) {
+	// Setup mock deepagents-runtime server
+	mockServer, err := mock.NewMockDeepAgentsServer()
+	require.NoError(t, err)
+	defer mockServer.Close()
+
+	// Set mock URL environment variable
+	os.Setenv("MOCK_SPEC_ENGINE_URL", mockServer.URL())
+	defer os.Unsetenv("MOCK_SPEC_ENGINE_URL")
+
 	// Setup test environment with real infrastructure
 	testDB := helpers.NewTestDatabase(t)
 	defer testDB.Close()
@@ -34,9 +41,9 @@ func TestRefinementIntegration(t *testing.T) {
 	txCtx, rollback := testDB.BeginTransaction(t)
 	defer rollback()
 
-	// Use real deepagents-runtime service (no mocking)
+	// Get configuration (will use mock URL due to environment variable)
 	config := SetupInClusterEnvironment()
-	t.Logf("Using real infrastructure - Database: %s, SpecEngine: %s", config.DatabaseURL, config.SpecEngineURL)
+	t.Logf("Using mock infrastructure - Database: %s, SpecEngine: %s", config.DatabaseURL, config.SpecEngineURL)
 
 	// Initialize services
 	specEngineClient := orchestration.NewSpecEngineClient(testDB.Pool)
@@ -46,7 +53,7 @@ func TestRefinementIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	gatewayHandler := gateway.NewHandler(orchestrationService, jwtManager, testDB.Pool)
-	wsProxy := gateway.NewWebSocketProxy(testDB.Pool, mockSpecEngine.URL())
+	wsProxy := gateway.NewWebSocketProxy(testDB.Pool, mockServer.URL())
 
 	// Setup Gin router
 	gin.SetMode(gin.TestMode)
@@ -122,16 +129,54 @@ func TestRefinementIntegration(t *testing.T) {
 		threadID := refinementResponse["thread_id"].(string)
 		assert.NotEmpty(t, threadID)
 
-		// Step 3: Wait for processing to complete
-		time.Sleep(200 * time.Millisecond)
+		// Step 3: Wait for processing to complete and validate database persistence
+		time.Sleep(500 * time.Millisecond)
 
-		// Step 4: Check if proposal was created
-		// This would typically be done through a GET endpoint, but for this test
-		// we'll verify the mock spec engine received the request
-		threadState, exists := mockSpecEngine.GetThreadState(threadID)
-		assert.True(t, exists)
-		assert.Equal(t, "completed", threadState.Status)
-		assert.NotNil(t, threadState.Result)
+		// Step 4: Validate that data was persisted to the database
+		// Query the proposals table to verify the generated_files match our mock data
+		var proposalID string
+		var generatedFiles json.RawMessage
+		var status string
+		
+		err = testDB.Pool.QueryRow(txCtx, 
+			"SELECT id, generated_files, status FROM proposals WHERE thread_id = $1", 
+			threadID,
+		).Scan(&proposalID, &generatedFiles, &status)
+		require.NoError(t, err, "Proposal should be created in database")
+
+		// Verify the proposal status
+		assert.Equal(t, "completed", status)
+
+		// Verify the generated files match our mock data
+		var dbFiles map[string]interface{}
+		err = json.Unmarshal(generatedFiles, &dbFiles)
+		require.NoError(t, err)
+
+		// Check that key files from our mock data are present
+		assert.Contains(t, dbFiles, "/definition.json")
+		assert.Contains(t, dbFiles, "/THE_SPEC/requirements.md")
+		assert.Contains(t, dbFiles, "/THE_CAST/GreetingAgent.md")
+
+		// Verify the definition.json content structure
+		definitionFile, ok := dbFiles["/definition.json"].(map[string]interface{})
+		require.True(t, ok)
+		content, ok := definitionFile["content"].([]interface{})
+		require.True(t, ok)
+		
+		// Parse the JSON content to verify it's valid
+		var definitionJSON map[string]interface{}
+		jsonContent := strings.Join(func() []string {
+			result := make([]string, len(content))
+			for i, v := range content {
+				result[i] = v.(string)
+			}
+			return result
+		}(), "")
+		err = json.Unmarshal([]byte(jsonContent), &definitionJSON)
+		require.NoError(t, err)
+		
+		assert.Equal(t, "GreetingWorkflow", definitionJSON["name"])
+		assert.Equal(t, "1.0.0", definitionJSON["version"])
 	})
 
 	t.Run("WebSocket Streaming", func(t *testing.T) {
@@ -162,14 +207,8 @@ func TestRefinementIntegration(t *testing.T) {
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Set up mock thread state
-		mockSpecEngine.SetThreadResult("test-thread-123", map[string]interface{}{
-			"specification": helpers.CreateSingleAgentWorkflow(
-				"Enhanced Agent",
-				"Enhanced agent with WebSocket streaming",
-			),
-			"changes": []string{"Added WebSocket support"},
-		})
+		// Set up mock thread state - not needed as mock server handles this automatically
+		// The mock server will stream events from all_events.json
 
 		// Read WebSocket messages
 		messages := make([]map[string]interface{}, 0)
@@ -337,24 +376,13 @@ func TestRefinementIntegration(t *testing.T) {
 }
 
 func TestSpecEngineIntegration(t *testing.T) {
-	// Test direct integration with real Spec Engine (DeepAgents Runtime)
-	config := SetupInClusterEnvironment()
-	specEngineURL := config.SpecEngineURL
+	// Setup mock deepagents-runtime server
+	mockServer, err := mock.NewMockDeepAgentsServer()
+	require.NoError(t, err)
+	defer mockServer.Close()
 
-	t.Run("Spec Engine Health Check", func(t *testing.T) {
-		resp, err := http.Get(specEngineURL + "/health")
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-		var healthResponse map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&healthResponse)
-		require.NoError(t, err)
-
-		assert.Equal(t, "healthy", healthResponse["status"])
-		assert.Equal(t, "mock-spec-engine", healthResponse["service"])
-	})
+	// Test direct integration with mock Spec Engine
+	specEngineURL := mockServer.URL()
 
 	t.Run("Spec Engine Invoke", func(t *testing.T) {
 		invokeReq := map[string]interface{}{
@@ -369,7 +397,7 @@ func TestSpecEngineIntegration(t *testing.T) {
 		invokeBody, _ := json.Marshal(invokeReq)
 
 		resp, err := http.Post(
-			mockSpecEngine.URL()+"/deepagents-runtime/invoke",
+			specEngineURL+"/invoke",
 			"application/json",
 			bytes.NewBuffer(invokeBody),
 		)
@@ -382,34 +410,15 @@ func TestSpecEngineIntegration(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&invokeResponse)
 		require.NoError(t, err)
 
-		assert.Equal(t, "test-job-123", invokeResponse["thread_id"])
+		assert.Equal(t, "test-job-63e8fa1b-60cb-454b-8815-96f1b4cb4574", invokeResponse["thread_id"])
 		assert.Equal(t, "started", invokeResponse["status"])
 	})
 
 	t.Run("Spec Engine State", func(t *testing.T) {
-		// First invoke to create a thread
-		invokeReq := map[string]interface{}{
-			"job_id":     "test-state-123",
-			"trace_id":   "test-trace-123",
-			"agent_definition": helpers.DefaultTestWorkflow.Specification,
-			"input_payload": map[string]interface{}{
-				"instructions": "Test state check",
-			},
-		}
-		invokeBody, _ := json.Marshal(invokeReq)
-
-		_, err := http.Post(
-			mockSpecEngine.URL()+"/deepagents-runtime/invoke",
-			"application/json",
-			bytes.NewBuffer(invokeBody),
-		)
-		require.NoError(t, err)
-
-		// Wait for processing
-		time.Sleep(200 * time.Millisecond)
-
-		// Check state
-		resp, err := http.Get(mockSpecEngine.URL() + "/deepagents-runtime/state/test-state-123")
+		// Check state using the thread ID from our test data
+		threadID := "test-job-63e8fa1b-60cb-454b-8815-96f1b4cb4574"
+		
+		resp, err := http.Get(specEngineURL + "/state/" + threadID)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 
@@ -419,8 +428,81 @@ func TestSpecEngineIntegration(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&stateResponse)
 		require.NoError(t, err)
 
-		assert.Equal(t, "test-state-123", stateResponse["thread_id"])
+		assert.Equal(t, threadID, stateResponse["thread_id"])
 		assert.Equal(t, "completed", stateResponse["status"])
 		assert.NotNil(t, stateResponse["result"])
+		assert.NotNil(t, stateResponse["generated_files"])
+
+		// Verify generated files structure
+		generatedFiles, ok := stateResponse["generated_files"].(map[string]interface{})
+		require.True(t, ok)
+		
+		assert.Contains(t, generatedFiles, "/definition.json")
+		assert.Contains(t, generatedFiles, "/THE_SPEC/requirements.md")
+		assert.Contains(t, generatedFiles, "/THE_CAST/GreetingAgent.md")
+	})
+
+	t.Run("WebSocket Streaming", func(t *testing.T) {
+		// Convert HTTP URL to WebSocket URL
+		wsURL := "ws" + strings.TrimPrefix(specEngineURL, "http") + "/stream/test-job-63e8fa1b-60cb-454b-8815-96f1b4cb4574"
+
+		dialer := websocket.Dialer{}
+		conn, _, err := dialer.Dial(wsURL, nil)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		// Read WebSocket messages
+		messages := make([]map[string]interface{}, 0)
+		timeout := time.After(5 * time.Second)
+
+		for {
+			select {
+			case <-timeout:
+				t.Fatal("Timeout waiting for WebSocket messages")
+			default:
+				conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+				var message map[string]interface{}
+				err := conn.ReadJSON(&message)
+				if err != nil {
+					if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+						goto done
+					}
+					continue
+				}
+
+				messages = append(messages, message)
+
+				// Check for end event
+				if eventType, ok := message["event_type"].(string); ok && eventType == "end" {
+					goto done
+				}
+			}
+		}
+
+	done:
+		// Verify we received messages
+		assert.Greater(t, len(messages), 0)
+
+		// Verify message structure
+		for _, msg := range messages {
+			assert.Contains(t, msg, "event_type")
+			assert.Contains(t, msg, "data")
+		}
+
+		// Should have at least one state update and one end event
+		hasStateUpdate := false
+		hasEndEvent := false
+		for _, msg := range messages {
+			eventType := msg["event_type"].(string)
+			if eventType == "on_state_update" {
+				hasStateUpdate = true
+			}
+			if eventType == "end" {
+				hasEndEvent = true
+			}
+		}
+
+		assert.True(t, hasStateUpdate, "Should have received state update event")
+		assert.True(t, hasEndEvent, "Should have received end event")
 	})
 }

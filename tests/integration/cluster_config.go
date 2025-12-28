@@ -20,6 +20,13 @@ func SetupInClusterEnvironment() *ClusterConfig {
 		Namespace:   getNamespace(),
 	}
 
+	// Check for mock URL override first (for testing)
+	if mockURL := os.Getenv("MOCK_SPEC_ENGINE_URL"); mockURL != "" {
+		config.SpecEngineURL = mockURL
+		config.DatabaseURL = buildDatabaseURL()
+		return config
+	}
+
 	if config.IsInCluster {
 		// In-cluster configuration using Kubernetes DNS
 		config.DatabaseURL = buildDatabaseURL()

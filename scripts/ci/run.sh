@@ -34,8 +34,11 @@ if [[ "${GO_ENV}" != "development" ]]; then
     echo "⏳ Waiting for dependencies..."
     "${SCRIPT_DIR}/../helpers/wait-for-postgres.sh"
     
-    if [[ -n "${SPEC_ENGINE_URL:-}" ]]; then
+    # Skip deepagents-runtime wait if using mock
+    if [[ -n "${SPEC_ENGINE_URL:-}" && -z "${MOCK_SPEC_ENGINE_URL:-}" ]]; then
         "${SCRIPT_DIR}/../helpers/wait-for-deepagents-runtime.sh"
+    elif [[ -n "${MOCK_SPEC_ENGINE_URL:-}" ]]; then
+        echo "🎭 Using mock deepagents-runtime, skipping connectivity check"
     fi
 fi
 

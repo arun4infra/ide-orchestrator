@@ -16,6 +16,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Copy test data
+COPY tests/testdata ./tests/testdata
+COPY tests/mock ./tests/mock
+
 # Build integration tests with coverage
 RUN go test -c -cover ./tests/integration -o integration-tests
 
