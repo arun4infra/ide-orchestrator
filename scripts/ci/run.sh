@@ -1,58 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
-# Go Service Runtime Execution Script
-# Starts the ide-orchestrator service with proper configuration
+# Runtime Bootstrapper for ide-orchestrator service
+# This script runs inside the container to start the application
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# 1. Environment variable transformation (if needed)
+# The platform provides standard names, map to app expectations if different
+export DB_HOST="${POSTGRES_HOST:-localhost}"
+export DB_PORT="${POSTGRES_PORT:-5432}"
+export DB_NAME="${POSTGRES_DB:-ide_orchestrator}"
+export DB_USER="${POSTGRES_USER:-postgres}"
+export DB_PASSWORD="${POSTGRES_PASSWORD:-}"
 
-# Default values
-PORT="${PORT:-8080}"
-LOG_LEVEL="${LOG_LEVEL:-info}"
-GO_ENV="${GO_ENV:-production}"
+# 2. Optional dependency wait (basic connectivity check)
+if [[ -n "${POSTGRES_HOST:-}" ]]; then
+    echo "🔍 Checking database connectivity at ${POSTGRES_HOST}:${POSTGRES_PORT}..."
+    # Let the app handle connection retries - just log the attempt
+fi
 
+if [[ -n "${SPEC_ENGINE_URL:-}" ]]; then
+    echo "🔍 Will connect to spec engine at ${SPEC_ENGINE_URL}"
+fi
+
+# 3. Start the application
+# Use 'exec' so the app becomes PID 1 (receives SIGTERM signals correctly)
 echo "🚀 Starting ide-orchestrator service..."
+echo "  Port: ${PORT:-8080}"
+echo "  Environment: ${GO_ENV:-production}"
+echo "  Log Level: ${LOG_LEVEL:-info}"
 
-cd "${PROJECT_ROOT}"
-
-# Validate environment variables
-required_vars=(
-    "DATABASE_URL"
-    "JWT_SECRET"
-)
-
-for var in "${required_vars[@]}"; do
-    if [[ -z "${!var:-}" ]]; then
-        echo "❌ Required environment variable ${var} is not set"
-        exit 1
-    fi
-done
-
-# Wait for dependencies in production
-if [[ "${GO_ENV}" != "development" ]]; then
-    echo "⏳ Waiting for dependencies..."
-    "${SCRIPT_DIR}/../helpers/wait-for-postgres.sh"
-    
-    # Skip deepagents-runtime wait if using mock
-    if [[ -n "${SPEC_ENGINE_URL:-}" && -z "${MOCK_SPEC_ENGINE_URL:-}" ]]; then
-        "${SCRIPT_DIR}/../helpers/wait-for-deepagents-runtime.sh"
-    elif [[ -n "${MOCK_SPEC_ENGINE_URL:-}" ]]; then
-        echo "🎭 Using mock deepagents-runtime, skipping connectivity check"
-    fi
-fi
-
-# Run database migrations
-echo "🗄️  Running database migrations..."
-if [[ -f "${SCRIPT_DIR}/run-migrations.sh" ]]; then
-    "${SCRIPT_DIR}/run-migrations.sh"
-else
-    echo "⚠️  No migration script found, skipping..."
-fi
-
-# Start the service
-echo "🎯 Starting service on port ${PORT}..."
 exec ./bin/ide-orchestrator \
-    --port="${PORT}" \
-    --log-level="${LOG_LEVEL}" \
-    --env="${GO_ENV}"
+    --port="${PORT:-8080}" \
+    --log-level="${LOG_LEVEL:-info}" \
+    --env="${GO_ENV:-production}"

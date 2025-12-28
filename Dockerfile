@@ -38,8 +38,8 @@ RUN addgroup -g 1000 app && \
 # Set working directory
 WORKDIR /app
 
-# Copy binary, migrations, scripts, and migrate tool from builder
-COPY --from=builder /build/ide-orchestrator .
+# Copy binary, migrations, and scripts from builder
+COPY --from=builder /build/ide-orchestrator ./bin/ide-orchestrator
 COPY --from=builder /build/migrations ./migrations
 COPY --from=builder /build/scripts ./scripts
 COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
@@ -60,5 +60,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
 
-# Run the application
-ENTRYPOINT ["./ide-orchestrator"]
+# Run the application using the runtime bootstrapper
+CMD ["./scripts/ci/run.sh"]
