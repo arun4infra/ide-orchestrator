@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  packages: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   # STAGE 1: Build artifact once
   build:
