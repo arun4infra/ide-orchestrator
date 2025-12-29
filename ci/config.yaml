@@ -16,8 +16,8 @@ test:
   
 deployment:
   wait_timeout: 300
-  health_endpoint: "/api/health"    # Non-standard endpoint used by ide-orchestrator
-  liveness_endpoint: "/health"      # Standard liveness endpoint
+  health_endpoint: "/ready"     # Standard readiness endpoint
+  liveness_endpoint: "/health"  # Standard liveness endpoint
 
 # Three types of dependencies based on CI stages
 dependencies:

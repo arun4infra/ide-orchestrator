@@ -99,13 +99,30 @@ func main() {
 	// Add structured JSON logging middleware
 	router.Use(structuredLoggingMiddleware())
 
+	// Health checks MUST be at the root for the WebService standard
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+	})
+
+	router.GET("/ready", func(c *gin.Context) {
+		// Check database connectivity for readiness
+		if err := pool.Ping(context.Background()); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "not ready", 
+				"error": "database connection failed",
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
+
 	// API routes
 	api := router.Group("/api")
 
 	// Public routes (no authentication required)
 	api.POST("/auth/login", gatewayHandler.Login)
 
-	// Health check (public)
+	// Health check (public) - keep for backward compatibility
 	api.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})

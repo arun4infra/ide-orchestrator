@@ -28,7 +28,5 @@ echo "  Port: ${PORT:-8080}"
 echo "  Environment: ${GO_ENV:-production}"
 echo "  Log Level: ${LOG_LEVEL:-info}"
 
-exec ./bin/ide-orchestrator \
-    --port="${PORT:-8080}" \
-    --log-level="${LOG_LEVEL:-info}" \
-    --env="${GO_ENV:-production}"
+# Just exec the binary; Gin and your code will pick up PORT and GO_ENV from the environment
+exec ./bin/ide-orchestrator
