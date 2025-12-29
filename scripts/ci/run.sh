@@ -4,13 +4,12 @@ set -euo pipefail
 # Runtime Bootstrapper for ide-orchestrator service
 # This script runs inside the container to start the application
 
-# 1. Environment variable transformation (if needed)
-# The platform provides standard names, map to app expectations if different
-export DB_HOST="${POSTGRES_HOST:-localhost}"
-export DB_PORT="${POSTGRES_PORT:-5432}"
-export DB_NAME="${POSTGRES_DB:-ide_orchestrator}"
-export DB_USER="${POSTGRES_USER:-postgres}"
-export DB_PASSWORD="${POSTGRES_PASSWORD:-}"
+# 1. Construct DATABASE_URL from platform-provided granular variables
+# These are injected via envFrom: ide-orchestrator-db-conn
+if [[ -n "${POSTGRES_HOST:-}" ]]; then
+    export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable"
+    echo "🔍 Constructed DATABASE_URL for ${POSTGRES_HOST}"
+fi
 
 # 2. Optional dependency wait (basic connectivity check)
 if [[ -n "${POSTGRES_HOST:-}" ]]; then
@@ -18,8 +17,8 @@ if [[ -n "${POSTGRES_HOST:-}" ]]; then
     # Let the app handle connection retries - just log the attempt
 fi
 
-if [[ -n "${SPEC_ENGINE_URL:-}" ]]; then
-    echo "🔍 Will connect to spec engine at ${SPEC_ENGINE_URL}"
+if [[ -n "${IDEO_SPEC_ENGINE_URL:-}" ]]; then
+    echo "🔍 Will connect to spec engine at ${IDEO_SPEC_ENGINE_URL}"
 fi
 
 # 3. Start the application

@@ -28,7 +28,15 @@ jobs:
       test_suite: "tests/integration/auth"
       test_name: "auth"
       timeout: 30
-    secrets: inherit
+    secrets:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+      IDEO_JWT_SECRET: ${{ secrets.IDEO_JWT_SECRET }}
+      IDEO_SPEC_ENGINE_URL: ${{ secrets.IDEO_SPEC_ENGINE_URL }}
 
   test-workflow:
     needs: build
@@ -38,7 +46,15 @@ jobs:
       test_suite: "tests/integration/workflow"
       test_name: "workflow"
       timeout: 30
-    secrets: inherit
+    secrets:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+      IDEO_JWT_SECRET: ${{ secrets.IDEO_JWT_SECRET }}
+      IDEO_SPEC_ENGINE_URL: ${{ secrets.IDEO_SPEC_ENGINE_URL }}
 
   test-integration:
     needs: build
@@ -48,7 +64,15 @@ jobs:
       test_suite: "tests/integration"
       test_name: "integration"
       timeout: 30
-    secrets: inherit
+    secrets:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+      BOT_GITHUB_USERNAME: ${{ secrets.BOT_GITHUB_USERNAME }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TENANTS_REPO_NAME: ${{ secrets.TENANTS_REPO_NAME }}
+      IDEO_JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      IDEO_SPEC_ENGINE_URL: ${{ secrets.SPEC_ENGINE_URL }}
 
   # STAGE 3: Release only if ALL tests pass
   release:
