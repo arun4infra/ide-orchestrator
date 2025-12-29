@@ -47,6 +47,8 @@ COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 # Copy tests and source for in-cluster execution
 COPY --from=builder /build/tests ./tests
 COPY --from=builder /build/internal ./internal
+COPY --from=builder /build/cmd ./cmd
+COPY --from=builder /build/pkg ./pkg
 COPY --from=builder /build/go.mod /build/go.sum ./
 
 # Make scripts executable
