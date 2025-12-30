@@ -33,6 +33,8 @@ async def get_workflow(
     """Get a workflow by ID."""
     result = workflow_service.get_workflow(workflow_id, current_user["user_id"])
     if not result:
+        # Return 404 for both non-existent workflows and access denied cases
+        # This prevents information disclosure about workflow existence
         raise HTTPException(status_code=404, detail="Workflow not found")
     return result
 

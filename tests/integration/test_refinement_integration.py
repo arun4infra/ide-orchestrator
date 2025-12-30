@@ -161,9 +161,10 @@ async def test_proposal_approval(test_client: AsyncClient, test_db, jwt_manager)
     user_id = test_db.create_test_user(user_email, "hashed-password")
     token = await jwt_manager.generate_token(user_id, user_email, [], 24 * 3600)
     
-    # Test approving a non-existent proposal
+    # Test approving a non-existent proposal (use valid UUID format)
+    non_existent_uuid = "00000000-0000-0000-0000-000000000001"
     response = await test_client.post(
-        "/api/refinements/non-existent-proposal/approve",
+        f"/api/refinements/{non_existent_uuid}/approve",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -178,9 +179,10 @@ async def test_proposal_rejection(test_client: AsyncClient, test_db, jwt_manager
     user_id = test_db.create_test_user(user_email, "hashed-password")
     token = await jwt_manager.generate_token(user_id, user_email, [], 24 * 3600)
     
-    # Test rejecting a non-existent proposal
+    # Test rejecting a non-existent proposal (use valid UUID format)
+    non_existent_uuid = "00000000-0000-0000-0000-000000000002"
     response = await test_client.post(
-        "/api/refinements/non-existent-proposal/reject",
+        f"/api/refinements/{non_existent_uuid}/reject",
         headers={"Authorization": f"Bearer {token}"}
     )
     
@@ -220,8 +222,10 @@ async def test_refinement_validation(test_client: AsyncClient, test_db, jwt_mana
         "context": "Valid context"
     }
     
+    # Test with non-existent workflow (use valid UUID format)
+    non_existent_workflow_uuid = "00000000-0000-0000-0000-000000000003"
     response = await test_client.post(
-        "/api/workflows/non-existent-workflow/refinements",
+        f"/api/workflows/{non_existent_workflow_uuid}/refinements",
         json=valid_data,
         headers={"Authorization": f"Bearer {token}"}
     )

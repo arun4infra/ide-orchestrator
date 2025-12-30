@@ -111,7 +111,7 @@ async def test_database_user_access_control(test_client: AsyncClient, test_db, j
         f"/api/workflows/{workflow_id}",
         headers={"Authorization": f"Bearer {token2}"}
     )
-    assert response.status_code == 403
+    assert response.status_code == 404  # Return 404 to not reveal resource existence
 
 
 @pytest.mark.asyncio

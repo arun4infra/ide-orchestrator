@@ -69,13 +69,23 @@ class WorkflowService:
                             result[key] = str(value)
                 return result
     
+    def workflow_exists(self, workflow_id: str) -> bool:
+        """Check if a workflow exists (regardless of user access)."""
+        with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM workflows WHERE id = %s",
+                    (workflow_id,)
+                )
+                return cur.fetchone() is not None
+    
     def get_versions(self, workflow_id: str) -> List[Dict[str, Any]]:
         """Get all versions for a workflow."""
         with psycopg.connect(self.database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, version_number, status, created_at, updated_at
+                    SELECT id, version_number, status, created_at
                     FROM versions
                     WHERE workflow_id = %s
                     ORDER BY version_number DESC
@@ -98,7 +108,7 @@ class WorkflowService:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, version_number, status, specification, created_at, updated_at
+                    SELECT id, version_number, status, specification, created_at
                     FROM versions
                     WHERE workflow_id = %s AND version_number = %s
                     """,
@@ -162,11 +172,11 @@ class WorkflowService:
                     cur.execute(
                         """
                         INSERT INTO versions 
-                        (id, workflow_id, version_number, status, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        (id, workflow_id, version_number, status, created_at)
+                        VALUES (%s, %s, %s, %s, %s)
                         RETURNING id, version_number
                         """,
-                        (version_id, workflow_id, next_version, "published", now, now)
+                        (version_id, workflow_id, next_version, "published", now)
                     )
                     version = cur.fetchone()
                     
