@@ -25,14 +25,7 @@ spec:
   initContainer:
     command: ["/bin/sh", "-c"]
     args: 
-      - |
-        echo "Waiting for database to accept connections..."
-        # Check every 2 seconds if the port is open
-        until nc -z $POSTGRES_HOST $POSTGRES_PORT; do
-          echo "Database at $POSTGRES_HOST:$POSTGRES_PORT is not ready yet..."
-          sleep 2
-        done
-        echo "✅ Database is reachable!"
+      - "echo 'Waiting for database to accept connections...'; until nc -z $POSTGRES_HOST $POSTGRES_PORT; do echo 'Database at $POSTGRES_HOST:$POSTGRES_PORT is not ready yet...'; sleep 2; done; echo '✅ Database is reachable!'"
   
   # Secrets with standard environment variable names (envFrom)
   secret1Name: ide-orchestrator-db-conn      # POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
