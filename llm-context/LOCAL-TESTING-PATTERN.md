@@ -1,1 +1,0 @@
-Just call ./scripts/ci/in-cluster-test.sh
