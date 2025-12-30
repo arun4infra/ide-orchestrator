@@ -9,14 +9,24 @@ set -euo pipefail
 if [[ -n "${POSTGRES_HOST:-}" ]]; then
     export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable"
     echo "🔍 Constructed DATABASE_URL for ${POSTGRES_HOST}"
+    
+    # Wait up to 30 seconds for the port to open (additional safety check)
+    echo "🔍 Verifying database connectivity..."
+    TIMEOUT=30
+    while ! nc -z "$POSTGRES_HOST" "$POSTGRES_PORT" && [ $TIMEOUT -gt 0 ]; do
+        echo "Waiting for database port... ($TIMEOUT seconds remaining)"
+        sleep 1
+        let TIMEOUT-=1
+    done
+    
+    if [ $TIMEOUT -eq 0 ]; then
+        echo "⚠️ Database port check timed out, but continuing (app will retry)"
+    else
+        echo "✅ Database port is open"
+    fi
 fi
 
 # 2. Optional dependency wait (basic connectivity check)
-if [[ -n "${POSTGRES_HOST:-}" ]]; then
-    echo "🔍 Checking database connectivity at ${POSTGRES_HOST}:${POSTGRES_PORT}..."
-    # Let the app handle connection retries - just log the attempt
-fi
-
 if [[ -n "${IDEO_SPEC_ENGINE_URL:-}" ]]; then
     echo "🔍 Will connect to spec engine at ${IDEO_SPEC_ENGINE_URL}"
 fi
