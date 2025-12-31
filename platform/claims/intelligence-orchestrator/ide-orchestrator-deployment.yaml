@@ -13,7 +13,7 @@ spec:
   pathPrefix: "/api"
   
   # Enhanced backend service discovery
-  backendServiceName: "deepagents-runtime-http"
+  backendServiceName: "deepagents-runtime"
   backendServicePort: 8000
   backendServiceNamespace: "intelligence-deepagents"  # Cross-namespace service reference
   sessionAffinity: "ClientIP"

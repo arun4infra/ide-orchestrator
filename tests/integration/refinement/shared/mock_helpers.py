@@ -57,11 +57,11 @@ class DeepAgentsMockServer:
         app.router.add_get('/state/{thread_id}', self._handle_state)
         app.router.add_get('/stream/{thread_id}', self._handle_websocket)
         
-        # Start server on random port
+        # Start server on random port, bind to all interfaces for cluster access
         runner = web.AppRunner(app)
         await runner.setup()
         
-        site = web.TCPSite(runner, '127.0.0.1', 0)
+        site = web.TCPSite(runner, '0.0.0.0', 0)
         await site.start()
         
         # Get the actual port
@@ -70,9 +70,18 @@ class DeepAgentsMockServer:
         
         print(f"[DEBUG] Mock deepagents-runtime server started on port: {self.port}")
         
+        # For Kubernetes cluster testing, we need to use the pod's service name
+        # The production WebSocket proxy needs to connect to this mock server
+        # In cluster, the test pod needs to expose this mock server via a service
+        import socket
+        hostname = socket.gethostname()
+        
         # Set environment variable for production WebSocket proxy to use mock
-        os.environ["DEEPAGENTS_RUNTIME_URL"] = f"http://127.0.0.1:{self.port}"
-        print(f"[DEBUG] Set DEEPAGENTS_RUNTIME_URL to: {os.environ['DEEPAGENTS_RUNTIME_URL']}")
+        # Use the test pod's hostname and port for cluster communication
+        mock_url = f"http://{hostname}:{self.port}"
+        os.environ["DEEPAGENTS_RUNTIME_URL"] = mock_url
+        print(f"[DEBUG] Set DEEPAGENTS_RUNTIME_URL to: {mock_url}")
+        print(f"[DEBUG] Mock server accessible at: {mock_url}")
     
     async def _handle_invoke(self, request):
         """Handle POST /invoke requests."""

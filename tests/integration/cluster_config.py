@@ -88,7 +88,7 @@ def setup_in_cluster_environment() -> ClusterConfig:
         spec_engine_url = mock_url
     elif in_cluster:
         # In-cluster configuration using Kubernetes DNS
-        spec_engine_url = "http://deepagents-runtime.intelligence-deepagents.svc:8080"
+        spec_engine_url = os.getenv("DEEPAGENTS_RUNTIME_URL", "http://deepagents-runtime.intelligence-deepagents.svc.cluster.local:8000")
     else:
         # Local development configuration
         spec_engine_url = os.getenv("SPEC_ENGINE_URL", "http://localhost:8080")
