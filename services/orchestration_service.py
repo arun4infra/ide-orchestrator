@@ -100,6 +100,7 @@ class OrchestrationService:
             "trace_id": f"trace-{proposal_id}",
             "agent_definition": current_specification,
             "input_payload": {
+                "messages": [{"role": "user", "content": user_prompt}],
                 "instructions": user_prompt,
                 "context": context_selection or "",
                 "context_file_path": context_file_path

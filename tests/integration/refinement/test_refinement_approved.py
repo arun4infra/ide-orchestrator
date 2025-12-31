@@ -13,6 +13,7 @@ Tests the complete refinement approval flow with emphasis on:
 import pytest
 import asyncio
 from httpx import AsyncClient
+from fastapi.testclient import TestClient
 
 from .shared.fixtures import (
     test_user_token,
@@ -42,7 +43,8 @@ async def test_refinement_approved_lifecycle(
     test_user_token,
     sample_initial_draft_content,
     sample_generated_files_approved,
-    sample_refinement_request_approved
+    sample_refinement_request_approved,
+    app
 ):
     """
     Test complete refinement approval lifecycle with data integrity validation.
@@ -108,7 +110,22 @@ async def test_refinement_approved_lifecycle(
                 expected_context_selection=sample_refinement_request_approved["context_selection"]
             )
             
+            # Step 5.5: Drive WebSocket execution to trigger backend processing
+            # This simulates the frontend connecting to the WebSocket, which triggers the proxy
+            # to consume events from DeepAgents and update the database upon completion.
+            print(f"[DEBUG] Connecting to WebSocket to drive execution for thread: {thread_id}")
+            with TestClient(app) as client:
+                with client.websocket_connect(f"/api/ws/refinements/{thread_id}?token={token}") as websocket:
+                    while True:
+                        try:
+                            data = websocket.receive_json()
+                            if data.get("event_type") == "end":
+                                break
+                        except Exception:
+                            break
+            
             # Step 6: Wait for production orchestration service to complete processing
+            # The database update happens in a background task after WS closes, so we wait for it.
             print(f"[DEBUG] Waiting for production orchestration service to complete processing")
             await wait_for_proposal_completion_via_orchestration(
                 proposal_service=None,  # Use production service
@@ -170,7 +187,8 @@ async def test_refinement_approved_state_transitions(
     test_user_token,
     sample_initial_draft_content,
     sample_generated_files_approved,
-    sample_refinement_request_approved
+    sample_refinement_request_approved,
+    app
 ):
     """
     Test state machine transitions during approval flow using production services.
@@ -213,6 +231,18 @@ async def test_refinement_approved_state_transitions(
         assert proposal_processing["completed_at"] is None
         assert proposal_processing["resolved_at"] is None
         assert proposal_processing["resolution"] is None
+        
+        # Drive WebSocket execution
+        print(f"[DEBUG] Connecting to WebSocket to drive execution for thread: {thread_id}")
+        with TestClient(app) as client:
+            with client.websocket_connect(f"/api/ws/refinements/{thread_id}?token={token}") as websocket:
+                while True:
+                    try:
+                        data = websocket.receive_json()
+                        if data.get("event_type") == "end":
+                            break
+                    except Exception:
+                        break
         
         # Wait for completion through production orchestration service
         await wait_for_proposal_completion_via_orchestration(

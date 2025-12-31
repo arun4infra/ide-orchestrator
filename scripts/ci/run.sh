@@ -31,7 +31,7 @@ echo "==========================================================================
 echo "  Port:                 ${PORT}"
 echo "  Log Level:            ${LOG_LEVEL}"
 echo "  Postgres Host:        ${POSTGRES_HOST:-not set}"
-echo "  Spec Engine URL:      ${IDEO_SPEC_ENGINE_URL:-not set}"
+echo "  Spec Engine URL:      ${SPEC_ENGINE_URL:-${IDEO_SPEC_ENGINE_URL:-not set}}"
 echo "================================================================================"
 
 # 1. Construct DATABASE_URL from platform-provided granular variables
@@ -72,10 +72,19 @@ if [ -z "${JWT_SECRET}" ]; then
     exit 1
 fi
 
-# 2. Optional dependency wait (basic connectivity check)
+# 2. Map platform environment variables to application variables
+# Map spec engine URL from platform naming to application naming
 if [[ -n "${IDEO_SPEC_ENGINE_URL:-}" ]]; then
-    echo "🔍 Will connect to spec engine at ${IDEO_SPEC_ENGINE_URL}"
+    export DEEPAGENTS_RUNTIME_URL="${IDEO_SPEC_ENGINE_URL}"
+    echo "🔍 Mapped DEEPAGENTS_RUNTIME_URL to ${DEEPAGENTS_RUNTIME_URL}"
+elif [[ -n "${SPEC_ENGINE_URL:-}" ]]; then
+    export DEEPAGENTS_RUNTIME_URL="${SPEC_ENGINE_URL}"
+    echo "🔍 Mapped DEEPAGENTS_RUNTIME_URL to ${DEEPAGENTS_RUNTIME_URL}"
+else
+    echo "⚠️ No spec engine URL provided, using default"
 fi
+
+echo "🔍 Final DEEPAGENTS_RUNTIME_URL: ${DEEPAGENTS_RUNTIME_URL:-not set}"
 
 # 3. Start the application using uvicorn
 # - Dependencies pre-installed in container

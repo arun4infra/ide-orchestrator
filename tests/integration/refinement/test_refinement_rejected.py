@@ -13,6 +13,7 @@ Tests the complete refinement rejection flow with emphasis on:
 import pytest
 import asyncio
 from httpx import AsyncClient
+from fastapi.testclient import TestClient
 
 from .shared.fixtures import (
     test_user_token,
@@ -45,7 +46,8 @@ async def test_refinement_rejected_lifecycle(
     test_user_token,
     sample_initial_draft_content,
     sample_generated_files_rejected,
-    sample_refinement_request_rejected
+    sample_refinement_request_rejected,
+    app
 ):
     """
     Test complete refinement rejection lifecycle with data isolation validation.
@@ -114,6 +116,18 @@ async def test_refinement_rejected_lifecycle(
                 expected_context_file_path=sample_refinement_request_rejected["context_file_path"],
                 expected_context_selection=sample_refinement_request_rejected["context_selection"]
             )
+            
+            # Step 6.5: Drive WebSocket execution to trigger backend processing
+            print(f"[DEBUG] Connecting to WebSocket to drive execution for thread: {thread_id}")
+            with TestClient(app) as client:
+                with client.websocket_connect(f"/api/ws/refinements/{thread_id}?token={token}") as websocket:
+                    while True:
+                        try:
+                            data = websocket.receive_json()
+                            if data.get("event_type") == "end":
+                                break
+                        except Exception:
+                            break
             
             # Step 7: Wait for production orchestration service to complete processing
             print(f"[DEBUG] Waiting for production orchestration service to complete processing")
@@ -185,7 +199,8 @@ async def test_refinement_rejected_data_isolation(
     test_user_token,
     sample_initial_draft_content,
     sample_generated_files_rejected,
-    sample_refinement_request_rejected
+    sample_refinement_request_rejected,
+    app
 ):
     """
     Test data isolation between proposal and draft during rejection using production services.
@@ -225,6 +240,18 @@ async def test_refinement_rejected_data_isolation(
         proposal_id_1 = refinement_data_1["proposal_id"]
         thread_id_1 = refinement_data_1["thread_id"]
         print(f"[DEBUG] Got first proposal_id: {proposal_id_1}, thread_id: {thread_id_1}")
+        
+        # Drive WebSocket execution for first proposal
+        print(f"[DEBUG] Driving WebSocket execution for first proposal: {thread_id_1}")
+        with TestClient(app) as client:
+            with client.websocket_connect(f"/api/ws/refinements/{thread_id_1}?token={token}") as websocket:
+                while True:
+                    try:
+                        data = websocket.receive_json()
+                        if data.get("event_type") == "end":
+                            break
+                    except Exception:
+                        break
         
         # Complete first proposal through production orchestration service
         print(f"[DEBUG] Waiting for first proposal to complete via production orchestration service")
@@ -269,6 +296,18 @@ async def test_refinement_rejected_data_isolation(
         proposal_id_2 = refinement_data_2["proposal_id"]
         thread_id_2 = refinement_data_2["thread_id"]
         print(f"[DEBUG] Got second proposal_id: {proposal_id_2}, thread_id: {thread_id_2}")
+        
+        # Drive WebSocket execution for second proposal
+        print(f"[DEBUG] Driving WebSocket execution for second proposal: {thread_id_2}")
+        with TestClient(app) as client:
+            with client.websocket_connect(f"/api/ws/refinements/{thread_id_2}?token={token}") as websocket:
+                while True:
+                    try:
+                        data = websocket.receive_json()
+                        if data.get("event_type") == "end":
+                            break
+                    except Exception:
+                        break
         
         # Complete second proposal through production orchestration service
         print(f"[DEBUG] Waiting for second proposal to complete via production orchestration service")

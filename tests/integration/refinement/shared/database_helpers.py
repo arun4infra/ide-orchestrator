@@ -89,9 +89,21 @@ async def create_test_workflow_with_draft(
     # Create draft through production orchestration service
     draft_id = await orchestration_service.get_or_create_draft(workflow_id, user_id)
     
-    # Update draft with initial content through production service
-    # This would typically be done through the draft service
-    # For now, we'll use the orchestration service pattern
+    # Apply initial draft content through production draft service
+    if draft_content:
+        # Convert content to the format expected by apply_files_to_draft
+        generated_files = {}
+        for file_path, content in draft_content.items():
+            generated_files[file_path] = {
+                "content": content,
+                "type": "markdown"
+            }
+        
+        # Apply files through production draft service
+        files_applied = orchestration_service.draft_service.apply_files_to_draft(
+            draft_id, generated_files
+        )
+        print(f"[DEBUG] Applied {files_applied} initial files to draft {draft_id}")
     
     return workflow_id, draft_id
 
@@ -107,17 +119,29 @@ async def get_draft_content_by_workflow(workflow_id: str, user_id: str) -> Dict[
     Returns:
         Dictionary of file_path -> content
     """
-    # Use production services to get draft content
-    workflow_service = get_workflow_service()
+    # Use production orchestration service to get draft
+    orchestration_service = get_orchestration_service()
     
-    # Get workflow and associated draft through production service
-    workflow = workflow_service.get_workflow(workflow_id, user_id)
-    if not workflow:
+    try:
+        # Get or create draft through production service
+        draft_id = await orchestration_service.get_or_create_draft(workflow_id, user_id)
+        
+        # Get draft files through production draft service
+        draft_files = orchestration_service.draft_service.get_draft_files(draft_id)
+        
+        # Convert to expected format (file_path -> content string)
+        content_dict = {}
+        for file_path, file_data in draft_files.items():
+            if isinstance(file_data, dict) and "content" in file_data:
+                content_dict[file_path] = file_data["content"]
+            else:
+                content_dict[file_path] = str(file_data)
+        
+        return content_dict
+        
+    except Exception as e:
+        print(f"[DEBUG] Error getting draft content: {e}")
         return {}
-    
-    # This would use the production draft service to get content
-    # Implementation depends on the actual production service methods
-    return {}
 
 
 async def get_proposal_by_id(proposal_id: str) -> Optional[Dict[str, Any]]:

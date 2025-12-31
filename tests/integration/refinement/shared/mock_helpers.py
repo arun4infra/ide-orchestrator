@@ -211,8 +211,8 @@ async def wait_for_proposal_completion_via_orchestration(
     Wait for proposal completion via the actual production orchestration service.
     
     This follows the integration testing pattern by using the real production
-    orchestration service and WebSocket proxy. Only deepagents-runtime is mocked
-    (external dependency). Everything else uses production code paths.
+    orchestration service. The WebSocket connection has already been driven
+    by the test, so we just need to wait for the database update to complete.
     
     Args:
         proposal_service: ProposalService instance (production service)
@@ -223,11 +223,9 @@ async def wait_for_proposal_completion_via_orchestration(
     
     start_time = time.time()
     while time.time() - start_time < timeout:
-        # Check proposal status through production service
         try:
             # Use production service to check status
             from .database_helpers import get_proposal_by_id
-            from api.dependencies import get_database_url
             
             proposal = await get_proposal_by_id(proposal_id)
             if proposal and proposal["status"] == "completed":
