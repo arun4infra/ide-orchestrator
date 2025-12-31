@@ -259,6 +259,45 @@ class OrchestrationService:
                 self.deepagents_client.cleanup_thread_data(proposal["thread_id"])
             )
     
+    async def update_proposal_files_from_stream(self, thread_id: str, files: Dict[str, Any]) -> None:
+        """
+        Update proposal with files from WebSocket streaming using thread_id.
+        
+        This method is called from the WebSocket proxy when files are extracted
+        from streaming events. It finds the proposal by thread_id and updates it.
+        
+        Args:
+            thread_id: Thread ID from WebSocket stream
+            files: Files dictionary from streaming events
+        """
+        # Find proposal by thread_id
+        proposal = self.get_proposal_by_thread_id(thread_id)
+        if not proposal:
+            raise ValueError(f"No proposal found for thread_id: {thread_id}")
+        
+        # Update the proposal with files
+        await self._update_proposal_results(proposal["id"], "completed", None, files)
+    
+    async def update_proposal_status_from_stream(self, thread_id: str, status: str, error_message: str = None) -> None:
+        """
+        Update proposal status from WebSocket streaming using thread_id.
+        
+        This method is called from the WebSocket proxy when an error occurs
+        during streaming. It finds the proposal by thread_id and updates its status.
+        
+        Args:
+            thread_id: Thread ID from WebSocket stream
+            status: New status (e.g., "failed")
+            error_message: Optional error message
+        """
+        # Find proposal by thread_id
+        proposal = self.get_proposal_by_thread_id(thread_id)
+        if not proposal:
+            raise ValueError(f"No proposal found for thread_id: {thread_id}")
+        
+        # Update the proposal status
+        await self._update_proposal_results(proposal["id"], status, error_message, {})
+
     async def update_proposal_files(self, proposal_id: str, files: Dict[str, Any]) -> None:
         """
         Update proposal with files from WebSocket streaming.

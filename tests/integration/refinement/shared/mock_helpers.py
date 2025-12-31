@@ -1,209 +1,205 @@
 """
 DeepAgents mock setup utilities for refinement integration tests.
 
-Provides WebSocket stream simulation and mock client management
-to test the complete refinement workflow including stream processing.
+Provides simple HTTP mock for deepagents-runtime endpoints to test
+the actual production code paths without complex WebSocket logic.
 """
 
 import time
 import json
 import asyncio
-from unittest.mock import patch, AsyncMock, MagicMock
+import os
 from typing import Dict, Any, List, Optional
+from pathlib import Path
 
-# from tests.mock.deepagents_mock import MockDeepAgentsRuntimeClient  # Commented out to use real client
+# Import for in-process HTTP mock server
+import pytest_httpserver
 
 
-class WebSocketStreamSimulator:
+class DeepAgentsMockServer:
     """
-    Simulates WebSocket stream sequences for testing stream processing.
+    Simple HTTP mock server for deepagents-runtime endpoints.
     
-    This class emits events that the Orchestrator's proxy logic must catch
-    to prove Requirement 3.1 (WebSocket proxy with event extraction) works.
+    This follows the integration testing pattern by mocking only the
+    external deepagents-runtime HTTP endpoints that the production
+    DeepAgentsRuntimeClient calls.
     """
     
-    def __init__(self, thread_id: str, generated_files: Dict[str, Any]):
-        self.thread_id = thread_id
-        self.generated_files = generated_files
-        self.events = []
-        self._build_event_sequence()
+    def __init__(self, scenario: str = "approved"):
+        self.scenario = scenario
+        self.http_server = None
+        self.http_port = None
+        self.test_data = {}
+        self.thread_states = {}
+        self._load_test_data()
+        
+    def _load_test_data(self):
+        """Load real test data from testdata directory."""
+        testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
+        
+        scenario_files = {
+            "approved": "thread_state.json",
+            "rejected": "rejection_state.json", 
+            "isolation_1": "isolation_state_1.json"
+        }
+        
+        if self.scenario in scenario_files:
+            state_path = testdata_dir / scenario_files[self.scenario]
+            if state_path.exists():
+                with open(state_path, 'r') as f:
+                    self.test_data = json.load(f)
     
-    def _build_event_sequence(self):
-        """Build realistic event sequence with on_state_update containing files."""
-        # Initial state update (no files yet)
-        self.events.append({
-            "event_type": "on_state_update",
-            "data": {
-                "messages": "Starting refinement process...",
-                "thread_id": self.thread_id
-            }
-        })
+    async def start(self):
+        """Start the HTTP mock server."""
+        # Start HTTP server
+        self.http_server = pytest_httpserver.HTTPServer(host="127.0.0.1", port=0)
+        self.http_server.start()
+        self.http_port = self.http_server.port
         
-        # LLM stream events (simulating processing)
-        for i in range(3):
-            self.events.append({
-                "event_type": "on_llm_stream", 
-                "data": {
-                    "raw_event": f"Processing step {i+1}...",
-                    "thread_id": self.thread_id
-                }
-            })
+        # Setup HTTP endpoints
+        self._setup_http_endpoints()
         
-        # Critical: Final state update with files (this should trigger DB update)
-        self.events.append({
-            "event_type": "on_state_update",
-            "data": {
-                "messages": "Refinement completed successfully",
-                "thread_id": self.thread_id,
-                "files": self.generated_files  # This is what the proxy should extract
-            }
-        })
+        print(f"[DEBUG] Mock deepagents-runtime started on port: {self.http_port}")
         
-        # End event
-        self.events.append({
-            "event_type": "end",
-            "data": {
-                "thread_id": self.thread_id
-            }
-        })
+        # Set environment variable for production code to use mock
+        os.environ["DEEPAGENTS_RUNTIME_URL"] = f"http://127.0.0.1:{self.http_port}"
+        print(f"[DEBUG] Set DEEPAGENTS_RUNTIME_URL to: {os.environ['DEEPAGENTS_RUNTIME_URL']}")
     
-    async def stream_events(self, websocket_mock):
-        """
-        Stream events to simulate WebSocket communication.
+    def _setup_http_endpoints(self):
+        """Setup HTTP endpoints that match deepagents-runtime API."""
         
-        This method should be called by the WebSocket proxy to simulate
-        receiving events from deepagents-runtime.
-        """
-        for event in self.events:
-            # Simulate network delay
-            await asyncio.sleep(0.1)
-            # Yield event (this is what the proxy should receive)
-            yield event
+        def invoke_handler(request):
+            """Handle POST /invoke requests."""
+            thread_id = f"test-thread-{int(time.time() * 1000000)}"
+            self.thread_states[thread_id] = {
+                "status": "running",
+                "generated_files": {}
+            }
+            
+            print(f"[DEBUG] Mock invoke handler called, created thread_id: {thread_id}")
+            
+            # Simulate processing completion after a short delay
+            asyncio.create_task(self._complete_processing(thread_id))
+            
+            return pytest_httpserver.Response(
+                json.dumps({"thread_id": thread_id}),
+                status=200,
+                headers={"Content-Type": "application/json"}
+            )
+        
+        def state_handler(request):
+            """Handle GET /state/{thread_id} requests."""
+            thread_id = request.path_info.split('/')[-1]
+            
+            print(f"[DEBUG] Mock state handler called for thread_id: {thread_id}")
+            
+            if thread_id in self.thread_states:
+                state = self.thread_states[thread_id]
+                print(f"[DEBUG] Returning state for {thread_id}: {state['status']}")
+                return pytest_httpserver.Response(
+                    json.dumps(state),
+                    status=200,
+                    headers={"Content-Type": "application/json"}
+                )
+            else:
+                print(f"[DEBUG] Thread {thread_id} not found in states")
+                return pytest_httpserver.Response("Not found", status=404)
+        
+        # Register endpoints
+        self.http_server.expect_request("/invoke", method="POST").respond_with_handler(invoke_handler)
+        self.http_server.expect_request("/state/*", method="GET").respond_with_handler(state_handler)
+    
+    async def _complete_processing(self, thread_id: str):
+        """Simulate processing completion after a delay."""
+        print(f"[DEBUG] Starting processing simulation for thread_id: {thread_id}")
+        await asyncio.sleep(1)  # Simulate processing time
+        
+        if thread_id in self.thread_states:
+            self.thread_states[thread_id] = {
+                "status": "completed",
+                "generated_files": self.test_data.get("generated_files", {}),
+                "result": "Processing completed successfully"
+            }
+            print(f"[DEBUG] Mock processing completed for thread_id: {thread_id}")
+    
+    async def stop(self):
+        """Stop the mock server and cleanup."""
+        if self.http_server:
+            self.http_server.stop()
+            print(f"[DEBUG] HTTP server stopped")
+        
+        # Clean up environment variable
+        if "DEEPAGENTS_RUNTIME_URL" in os.environ:
+            del os.environ["DEEPAGENTS_RUNTIME_URL"]
+            print(f"[DEBUG] Cleaned up DEEPAGENTS_RUNTIME_URL environment variable")
+        
+        print(f"[DEBUG] Mock deepagents-runtime stopped")
 
 
-def create_mock_deepagents_client(thread_id_suffix: str = "") -> None:
+def create_mock_deepagents_server(scenario: str = "approved") -> DeepAgentsMockServer:
     """
-    Create configured mock DeepAgents client with thread_id.
+    Create simple HTTP mock server for deepagents-runtime.
     
-    NOTE: MockDeepAgentsRuntimeClient is commented out, so tests will use real client.
-    This function now returns None to indicate no mocking.
+    This follows the integration testing pattern by mocking only the
+    external HTTP endpoints that the production code calls.
     
     Args:
-        thread_id_suffix: Suffix to append to thread_id for uniqueness
+        scenario: Test scenario to load data for
         
     Returns:
-        None (no mock client, use real client)
+        DeepAgentsMockServer instance
     """
-    print(f"[DEBUG] create_mock_deepagents_client called with suffix: {thread_id_suffix}")
-    print("[DEBUG] MockDeepAgentsRuntimeClient is commented out, using real client")
-    return None
+    print(f"[DEBUG] Creating mock deepagents server for scenario: {scenario}")
+    return DeepAgentsMockServer(scenario)
 
 
-def create_websocket_stream_simulator(
-    thread_id: str, 
-    generated_files: Dict[str, Any]
-) -> WebSocketStreamSimulator:
-    """
-    Create WebSocket stream simulator for testing stream processing.
-    
-    Args:
-        thread_id: Thread ID for the simulation
-        generated_files: Files to include in final on_state_update event
-        
-    Returns:
-        WebSocketStreamSimulator instance
-    """
-    return WebSocketStreamSimulator(thread_id, generated_files)
-
-
-async def simulate_proposal_completion_via_stream(
+async def wait_for_proposal_completion_via_orchestration(
     proposal_service,
     proposal_id: str,
-    thread_id: str,
-    generated_files: Dict[str, Any],
-    scenario: str = "approved"
+    timeout: int = 30
 ):
     """
-    Simulate proposal completion via WebSocket stream processing using real test data.
+    Wait for proposal completion via the actual orchestration service processing.
     
-    This simulates the hybrid event processing where the WebSocket proxy
-    extracts files from streaming events and updates the database.
+    This follows the integration testing pattern by waiting for the real
+    orchestration service to complete its deepagents-runtime processing.
     
     Args:
         proposal_service: ProposalService instance
-        proposal_id: Proposal ID
-        thread_id: Thread ID
-        generated_files: Generated files to include in stream (will be overridden with real data)
-        scenario: Test scenario to load real data for
+        proposal_id: Proposal ID to monitor
+        timeout: Maximum wait time in seconds
     """
-    from pathlib import Path
-    import json
+    print(f"[DEBUG] Waiting for proposal completion via orchestration service for proposal_id: {proposal_id}")
     
-    # Load real test data based on scenario
-    testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
-    
-    scenario_files = {
-        "approved": "thread_state.json",
-        "rejected": "rejection_state.json", 
-        "isolation_1": "isolation_state_1.json"
-    }
-    
-    if scenario in scenario_files:
-        state_path = testdata_dir / scenario_files[scenario]
-        with open(state_path, 'r') as f:
-            state_data = json.load(f)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        # Check proposal status through production service
+        try:
+            # Use production service to check status
+            from .database_helpers import get_proposal_by_id
+            from api.dependencies import get_database_url
+            
+            proposal = await get_proposal_by_id(proposal_id, get_database_url())
+            if proposal and proposal["status"] == "completed":
+                print(f"[DEBUG] Proposal {proposal_id} completed via orchestration service")
+                return proposal
+            elif proposal and proposal["status"] == "failed":
+                print(f"[DEBUG] Proposal {proposal_id} failed")
+                raise Exception(f"Proposal processing failed")
+                
+        except Exception as e:
+            print(f"[DEBUG] Error checking proposal status: {e}")
         
-        # Use real generated files from test data
-        real_generated_files = state_data.get("generated_files", {})
-        if real_generated_files:
-            generated_files = real_generated_files
+        # Wait before next check
+        await asyncio.sleep(0.5)
     
-    # Create stream simulator with real data
-    simulator = create_websocket_stream_simulator(thread_id, generated_files)
-    
-    # Simulate the WebSocket proxy extracting files from the final on_state_update
-    final_state_event = None
-    for event in simulator.events:
-        if event["event_type"] == "on_state_update" and "files" in event.get("data", {}):
-            final_state_event = event
-    
-    if final_state_event:
-        # This simulates what the WebSocket proxy should do:
-        # Extract files from the stream and update the proposal
-        extracted_files = final_state_event["data"]["files"]
-        proposal_service.update_proposal_results(
-            proposal_id=proposal_id,
-            status="completed",
-            audit_trail_json="{}",
-            generated_files=extracted_files
-        )
+    raise TimeoutError(f"Proposal {proposal_id} did not complete within {timeout} seconds")
 
 
-def patch_deepagents_client(mock_client):
-    """
-    Context manager for patching DeepAgents client.
-    
-    Since MockDeepAgentsRuntimeClient is commented out, this returns a no-op context manager.
-    
-    Args:
-        mock_client: Mock client (will be None)
-    """
-    print(f"[DEBUG] patch_deepagents_client called with mock_client: {mock_client}")
-    if mock_client is None:
-        print("[DEBUG] No mock client provided, using real DeepAgentsRuntimeClient")
-        # Return a no-op context manager
-        from contextlib import nullcontext
-        return nullcontext()
-    else:
-        return patch('services.deepagents_client.DeepAgentsRuntimeClient', return_value=mock_client)
-
-
+# Cleanup tracking for testing requirement 4.5
 class RuntimeCleanupTracker:
     """
     Tracks calls to deepagents-runtime cleanup to verify Requirement 4.5.
-    
-    This ensures that upon Resolution (Approve/Reject), the system actually
-    tells the deepagents-runtime to delete its checkpoints.
     """
     
     def __init__(self):
@@ -221,7 +217,7 @@ class RuntimeCleanupTracker:
         """Check if cleanup was called for specific thread_id."""
         return any(call["thread_id"] == thread_id for call in self.cleanup_calls)
     
-    def get_cleanup_calls_for_thread(self, thread_id: str) -> List[Dict[str, Any]]:
+    def get_cleanup_calls_for_thread(self, thread_id: str) -> list:
         """Get all cleanup calls for specific thread_id."""
         return [call for call in self.cleanup_calls if call["thread_id"] == thread_id]
 
@@ -236,23 +232,16 @@ def get_cleanup_tracker() -> RuntimeCleanupTracker:
 
 
 def mock_deepagents_cleanup_call(thread_id: str, success: bool = True):
-    """
-    Mock a deepagents-runtime cleanup call.
-    
-    This should be called by the orchestration service when a proposal
-    is resolved to simulate cleanup of deepagents-runtime checkpoints.
-    """
+    """Mock a deepagents-runtime cleanup call."""
     print(f"[DEBUG] Mock cleanup called for thread_id: {thread_id}, success: {success}")
     _cleanup_tracker.record_cleanup_call(thread_id, success)
     return success
 
 
 def setup_cleanup_tracking():
-    """
-    Set up cleanup tracking by patching the cleanup method.
+    """Set up cleanup tracking by patching the cleanup method."""
+    from unittest.mock import patch
     
-    This patches the deepagents client cleanup method to track calls.
-    """
     async def mock_cleanup(self, thread_id: str):
         print(f"[DEBUG] Mock async cleanup called for thread_id: {thread_id}")
         result = mock_deepagents_cleanup_call(thread_id, True)

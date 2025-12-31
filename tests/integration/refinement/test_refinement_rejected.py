@@ -25,9 +25,8 @@ from .shared.database_helpers import (
     get_draft_content_by_workflow
 )
 from .shared.mock_helpers import (
-    create_mock_deepagents_client,
-    patch_deepagents_client,
-    simulate_proposal_completion_via_stream,
+    create_mock_deepagents_server,
+    wait_for_proposal_completion_via_orchestration,
     setup_cleanup_tracking
 )
 from .shared.assertions import (
@@ -79,17 +78,13 @@ async def test_refinement_rejected_lifecycle(
     # Step 3: Setup cleanup tracking to verify Requirement 4.5
     print(f"[DEBUG] Setting up cleanup tracking for rejected test")
     with setup_cleanup_tracking():
-        # Step 4: Trigger refinement request using real client (no mocking)
-        print(f"[DEBUG] Using real DeepAgents client for rejected test")
-        mock_client = create_mock_deepagents_client("rejected")  # Returns None
-        
-        print(f"[DEBUG] Making refinement request with real client")
-        with patch_deepagents_client(mock_client):  # No-op context manager
-            response = await test_client.post(
-                f"/api/workflows/{workflow_id}/refinements",
-                json=sample_refinement_request_rejected,
-                headers={"Authorization": f"Bearer {token}"}
-            )
+        # Step 4: Trigger refinement request - production code will use mock server via env var
+        print(f"[DEBUG] Making refinement request - production code will connect to mock server")
+        response = await test_client.post(
+            f"/api/workflows/{workflow_id}/refinements",
+            json=sample_refinement_request_rejected,
+            headers={"Authorization": f"Bearer {token}"}
+        )
         
         # Validate: Response contains thread_id and proposal_id; status is processing
         print(f"[DEBUG] Refinement response: {response.status_code}")
@@ -118,15 +113,13 @@ async def test_refinement_rejected_lifecycle(
             database_url=database_url
         )
         
-        # Step 7: Simulate WebSocket streaming with different content
+        # Step 7: Wait for WebSocket proxy to process the stream and update proposal
         # This tests that proposal gets updated but draft remains isolated
-        print(f"[DEBUG] Simulating proposal completion via stream")
-        await simulate_proposal_completion_via_stream(
+        print(f"[DEBUG] Waiting for WebSocket proxy to process stream and update proposal")
+        await wait_for_proposal_completion_via_websocket(
             proposal_service=proposal_service,
             proposal_id=proposal_id,
-            thread_id=thread_id,
-            generated_files=sample_generated_files_rejected,
-            scenario="rejected"
+            thread_id=thread_id
         )
         
         # Step 8: Validate proposal completion state (has different content)
@@ -218,15 +211,11 @@ async def test_refinement_rejected_data_isolation(
     
     # Create first proposal with different content
     print(f"[DEBUG] Creating first proposal for data isolation test")
-    mock_client_1 = create_mock_deepagents_client("isolation_1")  # Returns None
-    
-    print(f"[DEBUG] Making first refinement request with real client")
-    with patch_deepagents_client(mock_client_1):  # No-op context manager
-        response = await test_client.post(
-            f"/api/workflows/{workflow_id}/refinements",
-            json=sample_refinement_request_rejected,
-            headers={"Authorization": f"Bearer {token}"}
-        )
+    response = await test_client.post(
+        f"/api/workflows/{workflow_id}/refinements",
+        json=sample_refinement_request_rejected,
+        headers={"Authorization": f"Bearer {token}"}
+    )
     
     print(f"[DEBUG] First refinement response: {response.status_code}")
     refinement_data_1 = assert_refinement_response_valid(response)
@@ -234,36 +223,12 @@ async def test_refinement_rejected_data_isolation(
     thread_id_1 = refinement_data_1["thread_id"]
     print(f"[DEBUG] Got first proposal_id: {proposal_id_1}, thread_id: {thread_id_1}")
     
-    # Complete first proposal with radically different content
-    print(f"[DEBUG] Completing first proposal with different content")
-    different_content_1 = {
-        "/api_server.py": {
-            "content": [
-                "from flask import Flask, jsonify",
-                "import datetime",
-                "",
-                "app = Flask(__name__)",
-                "",
-                "@app.route('/health')",
-                "def health_check():",
-                "    return jsonify({",
-                "        'status': 'healthy',",
-                "        'timestamp': datetime.datetime.utcnow().isoformat(),",
-                "        'service': 'api-server'",
-                "    })"
-            ],
-            "created_at": "2025-12-18T11:00:00.000000+00:00",
-            "modified_at": "2025-12-18T11:00:00.000000+00:00"
-        }
-    }
-    
-    print(f"[DEBUG] Simulating first proposal completion via stream")
-    await simulate_proposal_completion_via_stream(
+    # Complete first proposal - wait for WebSocket proxy to process
+    print(f"[DEBUG] Waiting for first proposal to complete via WebSocket proxy")
+    await wait_for_proposal_completion_via_websocket(
         proposal_service=proposal_service,
         proposal_id=proposal_id_1,
-        thread_id=thread_id_1,
-        generated_files=different_content_1,
-        scenario="isolation_1"
+        thread_id=thread_id_1
     )
     
     # Verify draft is still unchanged
@@ -291,15 +256,11 @@ async def test_refinement_rejected_data_isolation(
     
     # Create second proposal with even more different content
     print(f"[DEBUG] Creating second proposal for data isolation test")
-    mock_client_2 = create_mock_deepagents_client("isolation_2")  # Returns None
-    
-    print(f"[DEBUG] Making second refinement request with real client")
-    with patch_deepagents_client(mock_client_2):  # No-op context manager
-        response = await test_client.post(
-            f"/api/workflows/{workflow_id}/refinements",
-            json=sample_refinement_request_rejected,
-            headers={"Authorization": f"Bearer {token}"}
-        )
+    response = await test_client.post(
+        f"/api/workflows/{workflow_id}/refinements",
+        json=sample_refinement_request_rejected,
+        headers={"Authorization": f"Bearer {token}"}
+    )
     
     print(f"[DEBUG] Second refinement response: {response.status_code}")
     refinement_data_2 = assert_refinement_response_valid(response)
@@ -307,35 +268,12 @@ async def test_refinement_rejected_data_isolation(
     thread_id_2 = refinement_data_2["thread_id"]
     print(f"[DEBUG] Got second proposal_id: {proposal_id_2}, thread_id: {thread_id_2}")
     
-    # Complete second proposal with even more different content
-    print(f"[DEBUG] Completing second proposal with even more different content")
-    different_content_2 = {
-        "/security_violation.py": {
-            "content": [
-                "import sqlite3",
-                "import hashlib",
-                "import os",
-                "",
-                "# WARNING: This code contains security vulnerabilities",
-                "# and violates privacy principles",
-                "",
-                "class UserDatabase:",
-                "    def __init__(self):",
-                "        # Insecure: Database file in predictable location",
-                "        self.db_path = '/tmp/users.db'"
-            ],
-            "created_at": "2025-12-18T10:30:15.000000+00:00",
-            "modified_at": "2025-12-18T10:30:15.000000+00:00"
-        }
-    }
-    
-    print(f"[DEBUG] Simulating second proposal completion via stream")
-    await simulate_proposal_completion_via_stream(
+    # Complete second proposal - wait for WebSocket proxy to process
+    print(f"[DEBUG] Waiting for second proposal to complete via WebSocket proxy")
+    await wait_for_proposal_completion_via_websocket(
         proposal_service=proposal_service,
         proposal_id=proposal_id_2,
-        thread_id=thread_id_2,
-        generated_files=different_content_2,
-        scenario="rejected"
+        thread_id=thread_id_2
     )
     
     # Verify draft is STILL unchanged after second proposal

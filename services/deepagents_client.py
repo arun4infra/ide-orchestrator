@@ -198,8 +198,31 @@ class DeepAgentsRuntimeClient:
         invoke_result = await self.invoke_job(payload)
         runtime_thread_id = invoke_result.get("thread_id", thread_id)
         
-        # Poll for completion (in real implementation, this would use WebSocket)
-        await asyncio.sleep(2)  # Give it time to process
+        # Poll for completion with proper timeout and intervals
+        max_wait_time = 60  # 60 seconds max wait
+        poll_interval = 2   # Poll every 2 seconds
+        elapsed_time = 0
         
-        # Get final state
-        return await self.get_execution_state(runtime_thread_id)
+        while elapsed_time < max_wait_time:
+            await asyncio.sleep(poll_interval)
+            elapsed_time += poll_interval
+            
+            try:
+                state = await self.get_execution_state(runtime_thread_id)
+                status = state.get("status", "running")
+                
+                if status == "completed":
+                    return state
+                elif status == "failed":
+                    error_msg = state.get("error", "Job failed without error details")
+                    raise Exception(f"Deepagents-runtime job failed: {error_msg}")
+                # Continue polling if status is "running" or unknown
+                
+            except Exception as e:
+                # If we can't get state, continue polling (might be temporary issue)
+                if elapsed_time >= max_wait_time:
+                    raise Exception(f"Failed to get job completion status: {str(e)}")
+                continue
+        
+        # Timeout reached
+        raise Exception(f"Job did not complete within {max_wait_time} seconds")

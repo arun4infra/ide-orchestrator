@@ -3,6 +3,7 @@
 import json
 import asyncio
 import logging
+import os
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query, Header
 from fastapi.security import HTTPBearer
@@ -103,13 +104,15 @@ async def stream_refinement(
             await websocket.close(code=1008, reason="Access denied to thread")
             return
         
-        # Connect to deepagents-runtime WebSocket (mock for now)
-        deepagents_url = "ws://deepagents-runtime:8000"  # This would be from config
-        mock_deepagents_url = "ws://localhost:8001"  # Mock server URL
+        # Connect to deepagents-runtime WebSocket using environment variable
+        deepagents_base_url = os.getenv("DEEPAGENTS_RUNTIME_URL", "http://deepagents-runtime:8000")
+        # Convert HTTP URL to WebSocket URL
+        ws_base_url = deepagents_base_url.replace("http://", "ws://").replace("https://", "wss://")
         
         try:
-            # Try to connect to mock deepagents server
-            ws_url = f"{mock_deepagents_url}/stream/{thread_id}"
+            # Connect to deepagents WebSocket endpoint
+            ws_url = f"{ws_base_url}/stream/{thread_id}"
+            logger.info(f"Attempting WebSocket connection to: {ws_url}")
             
             async with websockets.connect(ws_url) as deepagents_ws:
                 logger.info(f"Connected to deepagents-runtime WebSocket for thread: {thread_id}")
@@ -216,12 +219,13 @@ async def update_proposal_with_files(thread_id: str, files: dict):
     try:
         orchestration_service = get_orchestration_service()
         
-        # This would update the proposal in the database
-        # For now, just log the action
-        logger.info(f"Would update proposal for thread {thread_id} with {len(files)} files")
+        # Update the proposal in the database using the orchestration service
+        logger.info(f"Updating proposal for thread {thread_id} with {len(files)} files")
         
-        # In full implementation:
-        # await orchestration_service.update_proposal_files(thread_id, files)
+        # Use the orchestration service to update proposal with files
+        await orchestration_service.update_proposal_files_from_stream(thread_id, files)
+        
+        logger.info(f"Successfully updated proposal for thread {thread_id}")
         
     except Exception as e:
         logger.error(f"Failed to update proposal files for thread {thread_id}: {e}")
@@ -232,12 +236,14 @@ async def update_proposal_status_to_failed(thread_id: str, error_message: str):
     try:
         orchestration_service = get_orchestration_service()
         
-        # This would update the proposal status in the database
-        # For now, just log the action
-        logger.info(f"Would update proposal for thread {thread_id} to failed status: {error_message}")
+        # Update the proposal status in the database
+        logger.info(f"Updating proposal for thread {thread_id} to failed status: {error_message}")
         
-        # In full implementation:
-        # await orchestration_service.update_proposal_status(thread_id, "failed", error_message)
+        # Use the orchestration service to update proposal status
+        await orchestration_service.update_proposal_status_from_stream(thread_id, "failed", error_message)
+        
+    except Exception as e:
+        logger.error(f"Failed to update proposal status for thread {thread_id}: {e}")
         
     except Exception as e:
         logger.error(f"Failed to update proposal status for thread {thread_id}: {e}")

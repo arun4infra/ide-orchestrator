@@ -22,9 +22,8 @@ from .shared.fixtures import (
 )
 from .shared.database_helpers import create_test_workflow_with_draft
 from .shared.mock_helpers import (
-    create_mock_deepagents_client,
-    patch_deepagents_client,
-    simulate_proposal_completion_via_stream,
+    create_mock_deepagents_server,
+    wait_for_proposal_completion_via_orchestration,
     setup_cleanup_tracking
 )
 from .shared.assertions import (
@@ -72,17 +71,13 @@ async def test_refinement_approved_lifecycle(
     # Step 2: Setup cleanup tracking to verify Requirement 4.5
     print(f"[DEBUG] Setting up cleanup tracking for test")
     with setup_cleanup_tracking():
-        # Step 3: Trigger refinement request using real client (no mocking)
-        print(f"[DEBUG] Using real DeepAgents client for approved test")
-        mock_client = create_mock_deepagents_client("approved")  # Returns None
-        
-        print(f"[DEBUG] Making refinement request with real client")
-        with patch_deepagents_client(mock_client):  # No-op context manager
-            response = await test_client.post(
-                f"/api/workflows/{workflow_id}/refinements",
-                json=sample_refinement_request_approved,
-                headers={"Authorization": f"Bearer {token}"}
-            )
+        # Step 3: Trigger refinement request - production code will use mock server via env var
+        print(f"[DEBUG] Making refinement request - production code will connect to mock server")
+        response = await test_client.post(
+            f"/api/workflows/{workflow_id}/refinements",
+            json=sample_refinement_request_approved,
+            headers={"Authorization": f"Bearer {token}"}
+        )
         
         # Validate: Response contains thread_id and proposal_id; status is processing
         print(f"[DEBUG] Refinement response: {response.status_code}")
@@ -111,15 +106,12 @@ async def test_refinement_approved_lifecycle(
             database_url=database_url
         )
         
-        # Step 6: Simulate WebSocket streaming with file content updates
-        # This tests the hybrid event processing (Requirement 3.1)
-        print(f"[DEBUG] Simulating proposal completion via stream")
-        await simulate_proposal_completion_via_stream(
+        # Step 6: Wait for orchestration service to complete deepagents-runtime processing
+        # This tests the actual production code path (Requirement 3.1)
+        print(f"[DEBUG] Waiting for orchestration service to complete processing")
+        await wait_for_proposal_completion_via_orchestration(
             proposal_service=proposal_service,
-            proposal_id=proposal_id,
-            thread_id=thread_id,
-            generated_files=sample_generated_files_approved,
-            scenario="approved"
+            proposal_id=proposal_id
         )
         
         # Step 7: Validate proposal completion state
@@ -198,17 +190,13 @@ async def test_refinement_approved_state_transitions(
         database_url=database_url
     )
     
-    # Trigger refinement
-    print(f"[DEBUG] Using real DeepAgents client for state transition test")
-    mock_client = create_mock_deepagents_client("state_test")  # Returns None
-    
-    print(f"[DEBUG] Making refinement request with real client for state test")
-    with patch_deepagents_client(mock_client):  # No-op context manager
-        response = await test_client.post(
-            f"/api/workflows/{workflow_id}/refinements",
-            json=sample_refinement_request_approved,
-            headers={"Authorization": f"Bearer {token}"}
-        )
+    # Trigger refinement - production code will use mock server via env var
+    print(f"[DEBUG] Making refinement request - production code will connect to mock server")
+    response = await test_client.post(
+        f"/api/workflows/{workflow_id}/refinements",
+        json=sample_refinement_request_approved,
+        headers={"Authorization": f"Bearer {token}"}
+    )
     
     refinement_data = assert_refinement_response_valid(response)
     proposal_id = refinement_data["proposal_id"]
@@ -224,13 +212,10 @@ async def test_refinement_approved_state_transitions(
     assert proposal_processing["resolved_at"] is None
     assert proposal_processing["resolution"] is None
     
-    # Simulate completion
-    await simulate_proposal_completion_via_stream(
+    # Simulate completion - wait for orchestration service to process
+    await wait_for_proposal_completion_via_orchestration(
         proposal_service=proposal_service,
-        proposal_id=proposal_id,
-        thread_id=thread_id,
-        generated_files=sample_generated_files_approved,
-        scenario="approved"
+        proposal_id=proposal_id
     )
     
     # Validate completed state

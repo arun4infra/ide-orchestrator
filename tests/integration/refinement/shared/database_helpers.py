@@ -41,6 +41,16 @@ async def create_test_workflow_with_draft(
     
     with psycopg.connect(database_url, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
+            # Create user first (required by foreign key constraint)
+            cur.execute(
+                """
+                INSERT INTO users (id, name, email, hashed_password, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, NOW(), NOW())
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (user_id, f"Test User {user_id[:8]}", f"test-{user_id}@example.com", "dummy-hash")
+            )
+            
             # Create workflow
             cur.execute(
                 """

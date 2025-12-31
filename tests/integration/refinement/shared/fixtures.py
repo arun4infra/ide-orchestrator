@@ -32,40 +32,35 @@ class RefinementTestContext(NamedTuple):
 @pytest.fixture
 async def refinement_test_context(jwt_manager: JWTManager, mock_deepagents_server) -> RefinementTestContext:
     """
-    Complete test context with user, services, and token.
+    Complete test context fixture with all required services and authentication.
     
-    Creates a test user and initializes all production services
-    using the same dependency injection as production code.
+    This fixture provides:
+    - Authenticated user with JWT token
+    - Database connection
+    - All required service instances
+    - Mock deepagents server setup
     """
-    # Set the mock deepagents server URL for this test
-    import os
-    os.environ["DEEPAGENTS_RUNTIME_URL"] = mock_deepagents_server
-    print(f"[DEBUG] Set DEEPAGENTS_RUNTIME_URL to: {mock_deepagents_server}")
+    # Create test user with proper UUID format
+    user_id = str(uuid.uuid4())
+    token = await jwt_manager.generate_token(
+        user_id=user_id,
+        username=f"testuser-{user_id}",
+        roles=["user"],
+        duration_seconds=3600
+    )
     
-    # Use production dependency injection
+    # Get database URL
     database_url = get_database_url()
+    
+    # Initialize services with production dependency injection
     workflow_service = WorkflowService(database_url)
     proposal_service = ProposalService(database_url)
     draft_service = DraftService(database_url)
     
-    # Create test user with unique email
-    user_email = f"refinement-test-{int(time.time() * 1000000)}@example.com"
-    
-    with psycopg.connect(database_url, row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO users (name, email, hashed_password, created_at, updated_at)
-                VALUES (%s, %s, %s, NOW(), NOW())
-                RETURNING id
-                """,
-                ("Refinement Test User", user_email, "hashed-password")
-            )
-            user_result = cur.fetchone()
-            user_id = str(user_result["id"])
-    
-    # Generate JWT token
-    token = await jwt_manager.generate_token(user_id, user_email, [], 24 * 3600)
+    # Set environment variable for production code to use mock server
+    import os
+    os.environ["DEEPAGENTS_RUNTIME_URL"] = mock_deepagents_server
+    print(f"[DEBUG] Test context created with mock server URL: {mock_deepagents_server}")
     
     return RefinementTestContext(
         user_id=user_id,
