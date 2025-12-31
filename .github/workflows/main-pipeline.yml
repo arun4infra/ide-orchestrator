@@ -148,7 +148,7 @@ jobs:
 
   # STAGE 3: Release only if ALL tests pass
   release:
-    needs: [build, test-auth, test-auth-db, test-auth-jwt, test-workflow, test-integration, test-refinement-lifecycle]
+    needs: [build, test-auth, test-auth-db, test-auth-jwt, test-workflow, test-integration, test-refinement-lifecycle-approved, test-refinement-lifecycle-rejected]
     if: github.ref == 'refs/heads/main'
     uses: arun4infra/zerotouch-platform/.github/workflows/release-pipeline.yml@main
     with:
