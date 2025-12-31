@@ -120,10 +120,11 @@ async def simulate_proposal_completion_via_stream(
     proposal_service,
     proposal_id: str,
     thread_id: str,
-    generated_files: Dict[str, Any]
+    generated_files: Dict[str, Any],
+    scenario: str = "approved"
 ):
     """
-    Simulate proposal completion via WebSocket stream processing.
+    Simulate proposal completion via WebSocket stream processing using real test data.
     
     This simulates the hybrid event processing where the WebSocket proxy
     extracts files from streaming events and updates the database.
@@ -132,9 +133,32 @@ async def simulate_proposal_completion_via_stream(
         proposal_service: ProposalService instance
         proposal_id: Proposal ID
         thread_id: Thread ID
-        generated_files: Generated files to include in stream
+        generated_files: Generated files to include in stream (will be overridden with real data)
+        scenario: Test scenario to load real data for
     """
-    # Create stream simulator
+    from pathlib import Path
+    import json
+    
+    # Load real test data based on scenario
+    testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
+    
+    scenario_files = {
+        "approved": "thread_state.json",
+        "rejected": "rejection_state.json", 
+        "isolation_1": "isolation_state_1.json"
+    }
+    
+    if scenario in scenario_files:
+        state_path = testdata_dir / scenario_files[scenario]
+        with open(state_path, 'r') as f:
+            state_data = json.load(f)
+        
+        # Use real generated files from test data
+        real_generated_files = state_data.get("generated_files", {})
+        if real_generated_files:
+            generated_files = real_generated_files
+    
+    # Create stream simulator with real data
     simulator = create_websocket_stream_simulator(thread_id, generated_files)
     
     # Simulate the WebSocket proxy extracting files from the final on_state_update

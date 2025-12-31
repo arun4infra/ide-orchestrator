@@ -118,7 +118,8 @@ async def test_refinement_approved_lifecycle(
             proposal_service=proposal_service,
             proposal_id=proposal_id,
             thread_id=thread_id,
-            generated_files=sample_generated_files_approved
+            generated_files=sample_generated_files_approved,
+            scenario="approved"
         )
         
         # Step 7: Validate proposal completion state
@@ -228,7 +229,8 @@ async def test_refinement_approved_state_transitions(
         proposal_service=proposal_service,
         proposal_id=proposal_id,
         thread_id=thread_id,
-        generated_files=sample_generated_files_approved
+        generated_files=sample_generated_files_approved,
+        scenario="approved"
     )
     
     # Validate completed state

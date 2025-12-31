@@ -157,15 +157,33 @@ async def assert_content_integrity(
     expected_draft_content = {}
     for file_path, file_data in generated_files.items():
         if isinstance(file_data, dict) and "content" in file_data:
-            expected_draft_content[file_path] = file_data["content"]
+            # Handle content as array of lines (join them)
+            if isinstance(file_data["content"], list):
+                expected_draft_content[file_path] = "\n".join(file_data["content"])
+            else:
+                expected_draft_content[file_path] = file_data["content"]
         else:
             expected_draft_content[file_path] = str(file_data)
     
     # Get actual draft content
     actual_draft_content = await get_draft_content_by_workflow(workflow_id, database_url)
     
+    print(f"[DEBUG] Expected draft content keys: {list(expected_draft_content.keys())}")
+    print(f"[DEBUG] Actual draft content keys: {list(actual_draft_content.keys())}")
+    
+    # Compare content
+    if actual_draft_content != expected_draft_content:
+        print(f"[DEBUG] Content mismatch details:")
+        for file_path in set(list(expected_draft_content.keys()) + list(actual_draft_content.keys())):
+            expected = expected_draft_content.get(file_path, "<MISSING>")
+            actual = actual_draft_content.get(file_path, "<MISSING>")
+            if expected != actual:
+                print(f"[DEBUG] File {file_path}:")
+                print(f"[DEBUG]   Expected: {expected[:100]}...")
+                print(f"[DEBUG]   Actual: {actual[:100]}...")
+    
     assert actual_draft_content == expected_draft_content, \
-        f"Content integrity violation.\nProposal content: {expected_draft_content}\nDraft content: {actual_draft_content}"
+        f"Content integrity violation.\nProposal files: {list(expected_draft_content.keys())}\nDraft files: {list(actual_draft_content.keys())}"
 
 
 async def assert_draft_content_unchanged(

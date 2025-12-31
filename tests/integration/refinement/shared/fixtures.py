@@ -79,101 +79,79 @@ async def refinement_test_context(jwt_manager: JWTManager, mock_deepagents_serve
 
 @pytest.fixture
 def sample_initial_draft_content() -> Dict[str, str]:
-    """Standard initial draft content for tests."""
+    """Standard initial draft content for tests - matches real deepagents workflow structure."""
     return {
-        "main.py": "print('initial version')",
-        "config.json": '{"version": "1.0", "debug": false}'
+        "/user_request.md": "Create a simple hello world agent that greets users",
+        "/orchestrator_plan.md": "# Initial Plan\nBasic orchestrator plan for hello world agent.",
+        "/guardrail_assessment.md": "# Initial Guardrail Assessment\nBasic safety assessment.",
+        "/impact_assessment.md": "# Initial Impact Assessment\nBasic impact analysis.",
+        "/THE_SPEC/constitution.md": "# Initial Constitution\nBasic constitutional principles.",
+        "/THE_SPEC/requirements.md": "# Initial Requirements\nBasic input schema requirements.",
+        "/THE_SPEC/plan.md": "# Initial Plan\nBasic execution flow.",
+        "/THE_CAST/OrchestratorAgent.md": "# Initial Orchestrator\nBasic orchestrator agent.",
+        "/THE_CAST/GreetingAgent.md": "# Initial Greeting Agent\nBasic greeting agent.",
+        "/definition.json": '{"name": "InitialWorkflow", "version": "0.1.0"}'
     }
 
 
 @pytest.fixture
 def sample_enhanced_draft_content() -> Dict[str, str]:
-    """Enhanced draft content for approval tests."""
-    return {
-        "main.py": """import logging
-import sys
-
-def main():
-    try:
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-        
-        logger.info("Starting application")
-        print('enhanced version with error handling')
-        logger.info("Application completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Application failed: {e}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()""",
-        "config.json": '{"version": "2.0", "debug": false, "logging": {"level": "INFO"}}'
-    }
+    """Enhanced draft content for approval tests - loaded from real test data."""
+    # Load from actual test data
+    from pathlib import Path
+    import json
+    
+    testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
+    state_path = testdata_dir / "thread_state.json"
+    
+    with open(state_path, 'r') as f:
+        state_data = json.load(f)
+    
+    # Extract content from generated files
+    generated_files = state_data.get("generated_files", {})
+    content = {}
+    
+    for file_path, file_data in generated_files.items():
+        if isinstance(file_data, dict) and "content" in file_data:
+            # Join content lines if it's a list
+            if isinstance(file_data["content"], list):
+                content[file_path] = "\n".join(file_data["content"])
+            else:
+                content[file_path] = file_data["content"]
+        else:
+            content[file_path] = str(file_data)
+    
+    return content
 
 
 @pytest.fixture
 def sample_generated_files_approved() -> Dict[str, Any]:
-    """Standard generated files for approved proposal completion."""
-    return {
-        "main.py": {
-            "content": """import logging
-import sys
-
-def main():
-    try:
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-        
-        logger.info("Starting application")
-        print('enhanced version with error handling')
-        logger.info("Application completed successfully")
-        
-    except Exception as e:
-        logger.error(f"Application failed: {e}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()""",
-            "type": "markdown"
-        },
-        "config.json": {
-            "content": '{"version": "2.0", "debug": false, "logging": {"level": "INFO"}}',
-            "type": "json"
-        }
-    }
+    """Standard generated files for approved proposal completion - loaded from real test data."""
+    from pathlib import Path
+    import json
+    
+    testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
+    state_path = testdata_dir / "thread_state.json"
+    
+    with open(state_path, 'r') as f:
+        state_data = json.load(f)
+    
+    return state_data.get("generated_files", {})
 
 
 @pytest.fixture
 def sample_generated_files_rejected() -> Dict[str, Any]:
-    """Standard generated files for rejected proposal completion."""
-    return {
-        "main.py": {
-            "content": """from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
-db = SQLAlchemy(app)
-
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), nullable=False)
-
-def main():
-    print('Hello World with Database!')
-
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run()""",
-            "type": "markdown"
-        },
-        "config.json": {
-            "content": '{"version": "2.0", "database": {"uri": "sqlite:///app.db"}}',
-            "type": "json"
-        }
-    }
+    """Standard generated files for rejected proposal completion - loaded from real test data."""
+    from pathlib import Path
+    import json
+    
+    testdata_dir = Path(__file__).parent.parent.parent.parent / "testdata"
+    state_path = testdata_dir / "rejection_state.json"
+    
+    with open(state_path, 'r') as f:
+        state_data = json.load(f)
+    
+    return state_data.get("generated_files", {})
 
 
 @pytest.fixture

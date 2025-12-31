@@ -125,7 +125,8 @@ async def test_refinement_rejected_lifecycle(
             proposal_service=proposal_service,
             proposal_id=proposal_id,
             thread_id=thread_id,
-            generated_files=sample_generated_files_rejected
+            generated_files=sample_generated_files_rejected,
+            scenario="rejected"
         )
         
         # Step 8: Validate proposal completion state (has different content)
@@ -236,13 +237,23 @@ async def test_refinement_rejected_data_isolation(
     # Complete first proposal with radically different content
     print(f"[DEBUG] Completing first proposal with different content")
     different_content_1 = {
-        "main.py": {
-            "content": "# Completely different content 1\nprint('This should never appear in draft')",
-            "type": "markdown"
-        },
-        "config.json": {
-            "content": '{"completely": "different", "version": "999.0"}',
-            "type": "json"
+        "/api_server.py": {
+            "content": [
+                "from flask import Flask, jsonify",
+                "import datetime",
+                "",
+                "app = Flask(__name__)",
+                "",
+                "@app.route('/health')",
+                "def health_check():",
+                "    return jsonify({",
+                "        'status': 'healthy',",
+                "        'timestamp': datetime.datetime.utcnow().isoformat(),",
+                "        'service': 'api-server'",
+                "    })"
+            ],
+            "created_at": "2025-12-18T11:00:00.000000+00:00",
+            "modified_at": "2025-12-18T11:00:00.000000+00:00"
         }
     }
     
@@ -251,7 +262,8 @@ async def test_refinement_rejected_data_isolation(
         proposal_service=proposal_service,
         proposal_id=proposal_id_1,
         thread_id=thread_id_1,
-        generated_files=different_content_1
+        generated_files=different_content_1,
+        scenario="isolation_1"
     )
     
     # Verify draft is still unchanged
@@ -298,17 +310,22 @@ async def test_refinement_rejected_data_isolation(
     # Complete second proposal with even more different content
     print(f"[DEBUG] Completing second proposal with even more different content")
     different_content_2 = {
-        "main.py": {
-            "content": "# Even more different content 2\nprint('This should also never appear in draft')",
-            "type": "markdown"
-        },
-        "config.json": {
-            "content": '{"even_more": "different", "version": "888.0"}',
-            "type": "json"
-        },
-        "new_file.py": {
-            "content": "# This new file should never appear in draft",
-            "type": "markdown"
+        "/security_violation.py": {
+            "content": [
+                "import sqlite3",
+                "import hashlib",
+                "import os",
+                "",
+                "# WARNING: This code contains security vulnerabilities",
+                "# and violates privacy principles",
+                "",
+                "class UserDatabase:",
+                "    def __init__(self):",
+                "        # Insecure: Database file in predictable location",
+                "        self.db_path = '/tmp/users.db'"
+            ],
+            "created_at": "2025-12-18T10:30:15.000000+00:00",
+            "modified_at": "2025-12-18T10:30:15.000000+00:00"
         }
     }
     
@@ -317,7 +334,8 @@ async def test_refinement_rejected_data_isolation(
         proposal_service=proposal_service,
         proposal_id=proposal_id_2,
         thread_id=thread_id_2,
-        generated_files=different_content_2
+        generated_files=different_content_2,
+        scenario="rejected"
     )
     
     # Verify draft is STILL unchanged after second proposal
