@@ -1,0 +1,652 @@
+basePath: /api
+definitions:
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.ApproveProposalResponse:
+    properties:
+      approved_at:
+        type: string
+      message:
+        type: string
+      proposal_id:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.CreateWorkflowRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.CreateWorkflowResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.DeployVersionRequest:
+    properties:
+      version_number:
+        type: integer
+    required:
+    - version_number
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse:
+    properties:
+      code:
+        type: string
+      details:
+        additionalProperties:
+          type: string
+        type: object
+      error:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.GetWorkflowResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      has_active_draft:
+        type: boolean
+      id:
+        type: string
+      is_locked:
+        type: boolean
+      locked_at:
+        type: string
+      locked_by_user_id:
+        type: string
+      name:
+        type: string
+      production_version_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.LoginResponse:
+    properties:
+      expires_at:
+        type: string
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.UserInfo'
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.RefinementRequest:
+    properties:
+      context_file_path:
+        type: string
+      context_selection:
+        type: string
+      user_prompt:
+        type: string
+    required:
+    - user_prompt
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.RefinementResponse:
+    properties:
+      created_at:
+        type: string
+      definition:
+        additionalProperties: true
+        type: object
+      impact_analysis:
+        type: string
+      proposal_id:
+        type: string
+      proposed_changes:
+        additionalProperties: true
+        type: object
+      reason:
+        type: string
+      status:
+        description: '"approved" or "denied"'
+        type: string
+      thread_id:
+        description: LangGraph thread ID for WebSocket streaming
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.RejectProposalResponse:
+    properties:
+      message:
+        type: string
+      proposal_id:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.UserInfo:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  github_com_oranger_agent-builder_ide-orchestrator_internal_models.VersionResponse:
+    properties:
+      id:
+        type: string
+      is_production:
+        type: boolean
+      published_at:
+        type: string
+      version_number:
+        type: integer
+      workflow_id:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@bizmatters.dev
+    name: API Support
+  description: |-
+    AI-powered workflow builder API for multi-agent orchestration
+
+    This API enables creation, refinement, and deployment of LangGraph-based AI workflows.
+    Features include: workflow versioning, draft refinements, AI-powered proposals, and production deployment.
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: IDE Orchestrator API
+  version: "1.0"
+paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user with email and password, returns JWT token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      summary: User authentication
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate JWT token (client should discard token)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: User logout
+      tags:
+      - auth
+  /api/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Generate a new JWT token from an existing valid token
+      parameters:
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.LoginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      summary: Refresh JWT token
+      tags:
+      - auth
+  /refinements/{proposalId}/approve:
+    post:
+      consumes:
+      - application/json
+      description: Approve a proposal and apply its changes to the workflow draft
+      parameters:
+      - description: Proposal ID
+        in: path
+        name: proposalId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ApproveProposalResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Approve a refinement proposal
+      tags:
+      - refinements
+  /refinements/{proposalId}/reject:
+    post:
+      consumes:
+      - application/json
+      description: Reject a proposal without applying its changes to the workflow
+      parameters:
+      - description: Proposal ID
+        in: path
+        name: proposalId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.RejectProposalResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reject a refinement proposal
+      tags:
+      - refinements
+  /workflows:
+    post:
+      consumes:
+      - application/json
+      description: Create a new AI workflow with name and optional description
+      parameters:
+      - description: Workflow details
+        in: body
+        name: workflow
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.CreateWorkflowRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.CreateWorkflowResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new workflow
+      tags:
+      - workflows
+  /workflows/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a workflow with its metadata, lock status, and draft status
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.GetWorkflowResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get workflow by ID
+      tags:
+      - workflows
+  /workflows/{id}/deploy:
+    post:
+      consumes:
+      - application/json
+      description: Set a specific version as the production version for a workflow
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version to deploy
+        in: body
+        name: deploy
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.DeployVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Deploy version to production
+      tags:
+      - workflows
+  /workflows/{id}/draft:
+    delete:
+      consumes:
+      - application/json
+      description: Delete the current draft and all its proposals without publishing
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Draft discarded successfully
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Discard workflow draft
+      tags:
+      - workflows
+  /workflows/{id}/refinements:
+    post:
+      consumes:
+      - application/json
+      description: Request AI-powered refinement of a workflow based on user prompt
+        and optional context
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Refinement request
+        in: body
+        name: refinement
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.RefinementRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.RefinementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "423":
+          description: Workflow is locked by another user
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a workflow refinement proposal
+      tags:
+      - refinements
+  /workflows/{id}/versions:
+    get:
+      consumes:
+      - application/json
+      description: Get all published versions for a workflow with production status
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              items:
+                $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.VersionResponse'
+              type: array
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all versions of a workflow
+      tags:
+      - workflows
+    post:
+      consumes:
+      - application/json
+      description: Create a new immutable version from the current workflow draft
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.VersionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publish draft as new version
+      tags:
+      - workflows
+  /workflows/{id}/versions/{versionNumber}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific version of a workflow by version number
+      parameters:
+      - description: Workflow ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Version number
+        in: path
+        name: versionNumber
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.VersionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get specific version
+      tags:
+      - workflows
+  /ws/refinements/{thread_id}:
+    get:
+      description: WebSocket endpoint to stream real-time progress from Builder Agent
+      parameters:
+      - description: Thread ID
+        in: path
+        name: thread_id
+        required: true
+        type: string
+      - description: Bearer token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      responses:
+        "101":
+          description: Switching Protocols
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_oranger_agent-builder_ide-orchestrator_internal_models.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Stream Builder Agent refinement progress
+      tags:
+      - refinements
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and the JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
