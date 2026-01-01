@@ -5,15 +5,16 @@ metadata:
   name: ide-orchestrator-migrations
   namespace: intelligence-orchestrator
   annotations:
+    # Wave 1 ensures it runs AFTER ExternalSecrets (Wave 0) but BEFORE Deployment (Wave 3)
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   template:
     metadata:
       name: ide-orchestrator-migrations
     spec:
       restartPolicy: Never
+      imagePullSecrets:
+      - name: ghcr-pull-secret
       # 1. Pod-Level Security Context (Required for Restricted Policy)
       securityContext:
         runAsNonRoot: true
