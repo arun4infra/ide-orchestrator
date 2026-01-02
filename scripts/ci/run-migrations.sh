@@ -57,7 +57,7 @@ main() {
         if [[ -f "$migration" ]]; then
             log_info "Running migration: $(basename "$migration")"
             PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$migration"
-            ((migration_count++))
+            migration_count=$((migration_count + 1))
         fi
     done
     
